@@ -115,6 +115,20 @@ describe("ParkWhere app", () => {
     expect(await screen.findByText(/Couldn't load live counts/)).toBeInTheDocument();
   });
 
+  it("labels a failed refresh even while the last counts are recent", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<App />);
+      expect(await screen.findByText(/have car spaces now/)).toBeInTheDocument();
+      overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(await screen.findByText(/had car spaces .* ago/)).toHaveTextContent(/latest refresh failed/);
+      expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("moves focus to the results heading after a quick pick", async () => {
     const user = userEvent.setup();
     render(<App />);

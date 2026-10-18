@@ -54,6 +54,18 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
       </p>
     );
   }
+  if (failed || feed.refreshError) {
+    // Recent counts, but the latest refresh failed: say so, and don't call them "now".
+    return (
+      <p className="map-chip map-live">
+        <span className="live-dot live-dot-off" aria-hidden="true" />
+        <span>
+          <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks had car spaces {age(feed.fetchedAt, now)}
+          <span className="map-chip-meta"> · latest refresh failed</span>
+        </span>
+      </p>
+    );
+  }
   return (
     <p className="map-chip map-live">
       <span className="live-dot" aria-hidden="true" />
