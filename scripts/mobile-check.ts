@@ -30,10 +30,17 @@ try {
         .map((el) => ({ text: (el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 30), h: el.getBoundingClientRect().height }))
         .filter((t) => t.h < 40)
     );
+    // Big numbers (counts, prices) must never be cut off by their box.
+    const clipped = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".spaces-count, .cost-total")]
+        .filter((el) => el.scrollWidth > el.clientWidth + 1)
+        .map((el) => el.textContent?.trim() ?? "")
+    );
     await page.screenshot({ path: new URL(`${device.name}.png`, out).pathname, fullPage: true });
     const problems = [
       overflow > 0 ? `horizontal overflow of ${overflow}px` : null,
-      smallTargets.length ? `tap targets under 40px: ${smallTargets.map((t) => `${t.text} (${Math.round(t.h)}px)`).join(", ")}` : null
+      smallTargets.length ? `tap targets under 40px: ${smallTargets.map((t) => `${t.text} (${Math.round(t.h)}px)`).join(", ")}` : null,
+      clipped.length ? `numbers cut off: ${clipped.join(", ")}` : null
     ].filter(Boolean);
     console.log(`${device.name} ${device.width}px: ${problems.length ? problems.join("; ") : "ok"}`);
     failures += problems.length;

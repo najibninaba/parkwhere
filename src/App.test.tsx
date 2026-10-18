@@ -148,7 +148,7 @@ describe("ParkWhere app", () => {
     await searchAndChoose();
     const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
     expect(within(card).getByText("42")).toBeInTheDocument();
-    expect(within(card).getByText(/of 100/)).toBeInTheDocument();
+    expect(within(card).getByText(/car lots free of 100/)).toBeInTheDocument();
     expect(within(card).getByText(/reported 2 min ago/)).toBeInTheDocument();
     expect(within(card).getByText(/^\$\d+\.\d\d$/)).toBeInTheDocument();
     expect(screen.getByText(/HDB data fetched 2 min ago/)).toBeInTheDocument();
