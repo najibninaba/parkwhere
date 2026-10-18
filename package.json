@@ -2,6 +2,12 @@
   "name": "parkwhere",
   "private": true,
   "version": "0.1.0",
+  "description": "Find a carpark near where you're going in Singapore, with available car lots and price estimates.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/najibninaba/parkwhere"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -15,7 +21,8 @@
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "build:staging": "CLOUDFLARE_ENV=staging vite build",
     "deploy:staging": "pnpm build:staging && wrangler deploy",
-    "proof": "node scripts/pr-proof.ts"
+    "proof": "node scripts/pr-proof.ts",
+    "media": "node scripts/readme-media.ts"
   },
   "dependencies": {
     "effect": "4.0.5",

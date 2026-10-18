@@ -27,7 +27,7 @@ const problem = (status: number, message: string) => json({ error: message }, st
 
 const storeDown = (label: string) => (error: unknown) => {
   console.error(`ParkWhere ${label} store failed`, error);
-  return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "Availability is temporarily unavailable." } };
+  return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "ParkWhere can't read its saved counts" } };
 };
 
 /**

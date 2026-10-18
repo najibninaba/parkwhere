@@ -7,7 +7,7 @@ export function Header() {
           Park<span className="wordmark-where">Where</span>
         </span>
       </a>
-      <span className="header-note">HDB carparks · Singapore</span>
+      <span className="header-note">Singapore carparks</span>
     </header>
   );
 }

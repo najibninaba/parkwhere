@@ -64,7 +64,7 @@ export function SearchBox({ destination, onChoose, prominent = false }: Props) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocating(false);
-        choose({ name: "Your location", lat: position.coords.latitude, lng: position.coords.longitude });
+        choose({ name: "your location", lat: position.coords.latitude, lng: position.coords.longitude });
       },
       () => {
         setLocating(false);
@@ -119,7 +119,7 @@ export function SearchBox({ destination, onChoose, prominent = false }: Props) {
           {status.kind === "loading" && <p className="hint">Searching…</p>}
           {status.kind === "error" && <p className="hint hint-bad">{status.message}</p>}
           {status.kind === "results" && status.source === "hdb-registry" && (
-            <p className="hint">Place search isn't set up yet, so this only matches HDB carpark addresses.</p>
+            <p className="hint">Place search is unavailable. Search by HDB carpark address.</p>
           )}
           {status.kind === "results" && status.places.length === 0 && <p className="hint">No matches. Try a block number, road or postal code.</p>}
           {status.kind === "results" &&

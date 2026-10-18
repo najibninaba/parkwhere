@@ -98,7 +98,7 @@ describe("ParkWhere app", () => {
 
   it("says how many carparks have spaces on the landing map", async () => {
     render(<App />);
-    expect(await screen.findByText(/carparks have car spaces now/)).toHaveTextContent(/1,412 HDB carparks have car spaces now · 1,987 reported in the last 15 min · updated \d min ago/);
+    expect(await screen.findByText(/carparks have car lots available now/)).toHaveTextContent(/1,412 HDB carparks have car lots available now · 1,987 reported in the last 15 min · checked \d min ago/);
   });
 
   it("stops claiming 'now' when the overview is out of date, and says when it can't load", async () => {
@@ -110,23 +110,23 @@ describe("ParkWhere app", () => {
         points: []
       });
     const { unmount } = render(<App />);
-    expect(await screen.findByText(/Live counts are out of date/)).toHaveTextContent(/last updated (39|40) min ago · refresh failed/);
-    expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/HDB counts are out of date/)).toHaveTextContent(/last checked (39|40) min ago · latest check failed/);
+    expect(screen.queryByText(/have car lots available now/)).not.toBeInTheDocument();
     unmount();
     overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
     render(<App />);
-    expect(await screen.findByText(/Couldn't load live counts/)).toBeInTheDocument();
+    expect(await screen.findByText(/Couldn't load counts/)).toBeInTheDocument();
   });
 
   it("labels a failed refresh even while the last counts are recent", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       render(<App />);
-      expect(await screen.findByText(/have car spaces now/)).toBeInTheDocument();
+      expect(await screen.findByText(/have car lots available now/)).toBeInTheDocument();
       overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
       await vi.advanceTimersByTimeAsync(61_000);
-      expect(await screen.findByText(/had car spaces .* ago/)).toHaveTextContent(/latest refresh failed/);
-      expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+      expect(await screen.findByText(/had car lots available when last checked/)).toHaveTextContent(/latest check failed/);
+      expect(screen.queryByText(/have car lots available now/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -141,7 +141,7 @@ describe("ParkWhere app", () => {
         points: []
       });
     render(<App />);
-    expect(await screen.findByText(/have car spaces now/)).toHaveTextContent(/mall and URA carparks unavailable/);
+    expect(await screen.findByText(/have car lots available now/)).toHaveTextContent(/mall and URA counts unavailable/);
   });
 
   it("moves focus to the results heading after a quick pick", async () => {
@@ -163,10 +163,10 @@ describe("ParkWhere app", () => {
     await searchAndChoose();
     const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
     expect(within(card).getByText("42")).toBeInTheDocument();
-    expect(within(card).getByText(/car lots free of 100/)).toBeInTheDocument();
+    expect(within(card).getByText(/car lots available, out of 100/)).toBeInTheDocument();
     expect(within(card).getByText(/reported 2 min ago/)).toBeInTheDocument();
     expect(within(card).getByText(/^\$\d+\.\d\d$/)).toBeInTheDocument();
-    expect(screen.getByText(/HDB data fetched 2 min ago/)).toBeInTheDocument();
+    expect(screen.getByText(/HDB counts checked 2 min ago/)).toBeInTheDocument();
     expect(window.location.search).toContain("name=Known+Street+Market");
   });
 
@@ -187,13 +187,13 @@ describe("ParkWhere app", () => {
         nearby({ feed: { state: "last-good", fetchedAt: new Date(Date.now() - 14 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() } })
       );
     await searchAndChoose();
-    expect(await screen.findByText(/Latest refresh failed \(data.gov.sg returned HTTP 503\)\. Showing the last good HDB data, fetched 14 min ago\./)).toBeInTheDocument();
+    expect(await screen.findByText(/The latest HDB check failed \(data.gov.sg returned HTTP 503\)\. Showing HDB counts checked 14 min ago\./)).toBeInTheDocument();
   });
 
   it("explains when live spaces are unavailable but still lists carparks", async () => {
     nearbyResponse = () => Response.json(nearby({ feed: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "Could not reach data.gov.sg", lastAttemptAt: nowIso() } }));
     await searchAndChoose();
-    expect(await screen.findByText(/Live spaces are unavailable: Could not reach data.gov.sg/)).toBeInTheDocument();
+    expect(await screen.findByText(/HDB counts are unavailable \(Could not reach data.gov.sg\)/)).toBeInTheDocument();
     expect(screen.getByText("Blk 1 Known Street")).toBeInTheDocument();
   });
 
@@ -263,18 +263,18 @@ describe("ParkWhere app", () => {
     await searchAndChoose();
     const card = (await screen.findByText("Suntec City")).closest("li")!;
     expect(within(card).getByText("967")).toBeInTheDocument();
-    expect(within(card).getByText(/car lots free, as reported/)).toBeInTheDocument();
+    expect(within(card).getByText(/car lots available, as reported/)).toBeInTheDocument();
     expect(within(card).getByText(/LTA gives no time or total/)).toBeInTheDocument();
     expect(within(card).getByText("No estimate")).toBeInTheDocument();
     expect(within(card).queryByText(/of /)).not.toBeInTheDocument();
-    expect(screen.getByText(/Mall and URA counts from LTA DataMall, fetched 2 min ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Mall and URA counts from LTA, checked 2 min ago/)).toBeInTheDocument();
   });
 
   it("says when LTA is down even if no mall carparks are listed", async () => {
     nearbyResponse = () => Response.json(nearby({ lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() } }));
     await searchAndChoose();
-    expect(await screen.findByText(/Mall and URA counts are unavailable: LTA DataMall returned HTTP 503/, { selector: ".banner" })).toBeInTheDocument();
-    expect(screen.getByText(/when it last reported, not a reservation/)).toBeInTheDocument();
+    expect(await screen.findByText(/Mall and URA counts are unavailable \(LTA DataMall returned HTTP 503\)/, { selector: ".banner" })).toBeInTheDocument();
+    expect(screen.getByText(/in the whole carpark when it last reported\. It doesn.t reserve a lot/)).toBeInTheDocument();
     expect(screen.queryByText(/right now/)).not.toBeInTheDocument();
   });
 
@@ -289,7 +289,7 @@ describe("ParkWhere app", () => {
   it("re-sorts by most spaces", async () => {
     const user = await searchAndChoose();
     await screen.findByText("Blk 1 Known Street");
-    await user.click(screen.getByRole("button", { name: "Most spaces" }));
+    await user.click(screen.getByRole("button", { name: "Most available" }));
     const names = screen.getAllByRole("listitem").filter((item) => item.classList.contains("card")).map((item) => within(item).getByText(/^Blk/).textContent);
     expect(names[0]).toBe("Blk 1 Known Street");
   });

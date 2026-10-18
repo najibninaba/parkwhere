@@ -74,7 +74,7 @@ describe("estimateCost at electronic HDB carparks", () => {
   it("refuses stays outside a carpark's short-term parking hours", () => {
     const estimate = estimateCost(dayOnly, at("2026-10-19T22:00"), 60);
     expect(estimate.kind).toBe("not-allowed");
-    expect(estimate.kind !== "estimate" && estimate.reason).toMatch(/7am–10.30pm/);
+    expect(estimate.kind !== "estimate" && estimate.reason).toMatch(/from 7am to 10.30pm/);
   });
 
   it("gives no total where HDB's rules are incomplete", () => {
@@ -94,7 +94,7 @@ describe("estimateCost at electronic HDB carparks", () => {
 
   it("describes the published rate for every carpark", () => {
     expect(publishedRate(ordinary)).toBe("$0.60 per half-hour");
-    expect(publishedRate(central)).toMatch(/\$1\.20 per half-hour 7am–5pm Mon–Sat/);
-    expect(publishedRate(peak)).toMatch(/peak \$0\.80 per half-hour \(Daily 10am–10pm\)/);
+    expect(publishedRate(central)).toMatch(/\$1\.20 per half-hour from 7am to 5pm, Mon to Sat/);
+    expect(publishedRate(peak)).toMatch(/peak \$0\.80 per half-hour \(Daily, 10am to 10pm\)/);
   });
 });

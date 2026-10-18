@@ -21,19 +21,19 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
       </div>
       <dl className="promises">
         <div>
-          <dt>Live spaces, with their age</dt>
-          <dd>Car lots free right now from HDB, and how long ago each carpark last reported.</dd>
+          <dt>Available car lots</dt>
+          <dd>Counts from HDB and LTA. HDB counts also show when each carpark last reported.</dd>
         </div>
         <div>
-          <dt>Prices you can follow</dt>
-          <dd>Your stay worked out from HDB’s published rules — or a plain “no estimate” when the rules don’t say.</dd>
+          <dt>Price estimates</dt>
+          <dd>Worked out from HDB’s published rates. When the rates don’t cover your stay, the card says “No estimate” and why.</dd>
         </div>
         <div>
-          <dt>Directions in your own map app</dt>
-          <dd>Google Maps, Apple Maps or Waze, to the carpark’s mapped location.</dd>
+          <dt>Directions</dt>
+          <dd>Open Google Maps, Apple Maps or Waze at the carpark’s mapped location.</dd>
         </div>
       </dl>
-      <p className="hint">Covers HDB carparks across Singapore, plus the mall and URA carparks that report live counts to LTA. Mall and URA prices aren’t estimated yet.</p>
+      <p className="hint">Covers HDB carparks, and the mall and URA carparks that report counts to LTA. Mall and URA prices aren’t estimated yet.</p>
     </section>
   );
 }

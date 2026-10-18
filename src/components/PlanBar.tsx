@@ -73,7 +73,7 @@ export function PlanBar({ arrival, onArrival, durationMinutes, onDuration, radiu
         {(
           [
             ["distance", "Nearest"],
-            ["spaces", "Most spaces"],
+            ["spaces", "Most available"],
             ["cost", "Cheapest"]
           ] as const
         ).map(([key, label]) => (

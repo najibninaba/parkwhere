@@ -12,7 +12,7 @@ import type { RegistryCarpark } from "./domain";
 import { PUBLIC_HOLIDAYS, holidaysCover } from "./holidays";
 import { hhmm, sgtParts, type SgtParts } from "./sgt";
 
-export const TARIFF_SOURCE = "HDB short-term parking charges (updated 24 Jul 2026)";
+export const TARIFF_SOURCE = "HDB short-term parking charges (page dated 24 Jul 2026)";
 export const TARIFF_URL = "https://www.hdb.gov.sg/parking/other-parking-matters/shortterm-parking/shortterm-parking-charges";
 
 export const CENTRAL_AREA_CARPARKS: ReadonlySet<string> = new Set([
@@ -29,13 +29,13 @@ interface PeakWindow { days: DayRule; from: number; to: number }
 
 /** Popular carparks with peak-hour charges. HDB's caps do not apply at these carparks. */
 export const PEAK_CARPARKS: Readonly<Record<string, { label: string; windows: PeakWindow[] }>> = (() => {
-  const acbCy = { label: "Weekdays 10am–6pm; weekends 8am–7pm", windows: [{ days: "weekdays", from: hhmm(10), to: hhmm(18) }, { days: "weekends", from: hhmm(8), to: hhmm(19) }] as PeakWindow[] };
-  const se = { label: "Monday to Saturday 10am–10pm", windows: [{ days: "mon-sat", from: hhmm(10), to: hhmm(22) }] as PeakWindow[] };
-  const mp = { label: "Daily 8am–8pm", windows: [{ days: "daily", from: hhmm(8), to: hhmm(20) }] as PeakWindow[] };
-  const hg = { label: "Weekdays 11am–8pm; weekends 9am–8pm", windows: [{ days: "weekdays", from: hhmm(11), to: hhmm(20) }, { days: "weekends", from: hhmm(9), to: hhmm(20) }] as PeakWindow[] };
+  const acbCy = { label: "Weekdays 10am to 6pm, weekends 8am to 7pm", windows: [{ days: "weekdays", from: hhmm(10), to: hhmm(18) }, { days: "weekends", from: hhmm(8), to: hhmm(19) }] as PeakWindow[] };
+  const se = { label: "Monday to Saturday, 10am to 10pm", windows: [{ days: "mon-sat", from: hhmm(10), to: hhmm(22) }] as PeakWindow[] };
+  const mp = { label: "Daily, 8am to 8pm", windows: [{ days: "daily", from: hhmm(8), to: hhmm(20) }] as PeakWindow[] };
+  const hg = { label: "Weekdays 11am to 8pm, weekends 9am to 8pm", windows: [{ days: "weekdays", from: hhmm(11), to: hhmm(20) }, { days: "weekends", from: hhmm(9), to: hhmm(20) }] as PeakWindow[] };
   return {
     ACB: acbCy, CY: acbCy, SE21: se, SE22: se,
-    SE24: { label: "Daily 10am–10pm", windows: [{ days: "daily", from: hhmm(10), to: hhmm(22) }] },
+    SE24: { label: "Daily, 10am to 10pm", windows: [{ days: "daily", from: hhmm(10), to: hhmm(22) }] },
     MP14: mp, MP15: mp, MP16: mp, HG9: hg, HG9T: hg, HG15: hg, HG16: hg
   };
 })();
@@ -63,11 +63,11 @@ const NOT_COVERED = "Rates for this carpark aren't covered yet. Check the rates 
 export function publishedRate(carpark: Pick<RegistryCarpark, "source" | "id">): string {
   if (!isHdb(carpark)) return "Not published here. Rates are posted at the carpark.";
   const base = CENTRAL_AREA_CARPARKS.has(carpark.id)
-    ? "$1.20 per half-hour 7am–5pm Mon–Sat, $0.60 per half-hour at other times"
+    ? "$1.20 per half-hour from 7am to 5pm, Mon to Sat. $0.60 per half-hour at other times"
     : "$0.60 per half-hour";
   const peak = PEAK_CARPARKS[carpark.id];
   if (!peak) return base;
-  const peakRate = CENTRAL_AREA_CARPARKS.has(carpark.id) ? "$1.40 per half-hour (7am–5pm Mon–Sat) or $0.80" : "$0.80 per half-hour";
+  const peakRate = CENTRAL_AREA_CARPARKS.has(carpark.id) ? "$1.40 per half-hour (7am to 5pm, Mon to Sat) or $0.80" : "$0.80 per half-hour";
   return `${base}; peak ${peakRate} (${peak.label})`;
 }
 
@@ -148,12 +148,12 @@ export function estimateCost(carpark: TariffCarpark, arrival: Date, durationMinu
     if (window && (parts.minute < window[0] || parts.minute >= window[1])) {
       return {
         kind: "not-allowed",
-        reason: `Short-term parking here is only ${formatClock(window[0])}–${formatClock(window[1])}.`,
+        reason: `Short-term parking here is only from ${formatClock(window[0])} to ${formatClock(window[1])}.`,
         publishedRate: rate
       };
     }
     if (peakCarpark && (holiday || inPeak(carpark.id, parts))) {
-      return unavailable(holiday ? "Peak-hour charges on public holidays are not published." : "Your stay overlaps this carpark's peak-hour charges.");
+      return unavailable(holiday ? "Peak-hour charges on public holidays are not published." : "Your stay includes peak hours. Peak-hour charges aren't estimated yet.");
     }
 
     const dayBand = parts.minute >= DAY_START && parts.minute < NIGHT_START;
@@ -194,7 +194,7 @@ export function estimateCost(carpark: TariffCarpark, arrival: Date, durationMinu
     const cappedNight = carpark.nightParking ? Math.min(night, NIGHT_CAP_CENTS) : night;
     const subtotal = carpark.nightParking ? Math.min(cappedDay + cappedNight, dayCap) : cappedDay + cappedNight;
     if (cappedDay < day) notes.push(`Day cap of $${(dayCap / 100).toFixed(0)} applied.`);
-    if (cappedNight < night) notes.push("Night cap of $5 (10.30pm–7am) applied.");
+    if (cappedNight < night) notes.push("Night cap of $5 (10.30pm to 7am) applied.");
     if (subtotal < cappedDay + cappedNight) notes.push(`Whole-day cap of $${(dayCap / 100).toFixed(0)} applied.`);
     total += subtotal;
   }

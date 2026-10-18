@@ -70,7 +70,7 @@ describe("getFeed", () => {
     }) as D1Database;
     const read = await getFeed({ DB: failingBatch }, noWait, scriptedFetch([ok]).fetcher, new Date(Date.now() + 10 * 60_000));
     expect(read.snapshot?.carparks.TBM2.C.available).toBe(232);
-    expect(read.status.lastError).toBe("Couldn't refresh availability.");
+    expect(read.status.lastError).toBe("the latest check didn't finish");
   });
 
   it("answers within the blocking wait when data.gov.sg is slow, and finishes in the background", async () => {

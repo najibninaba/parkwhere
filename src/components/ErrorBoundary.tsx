@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
       <main className="layout">
         <section className="empty">
           <h1>Something went wrong.</h1>
-          <p>ParkWhere hit an unexpected error. Reloading usually fixes it.</p>
+          <p>ParkWhere hit an unexpected error. Try reloading the page.</p>
           <p>
             <button type="button" className="button button-primary" onClick={() => window.location.reload()}>
               Reload

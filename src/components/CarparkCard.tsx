@@ -16,13 +16,18 @@ interface Props {
 
 const title = (value: string) => value.toLowerCase().replace(/\b([a-z])/g, (letter) => letter.toUpperCase()).replace(/\bBlk\b/g, "Blk");
 
+const lots = new Intl.NumberFormat("en-SG");
+
+/** Registry hours such as "7AM-10.30PM" as "7am to 10.30pm". */
+const hours = (value: string) => value.toLowerCase().replace(/\s*-\s*/, " to ");
+
 function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
   const { car } = carpark;
   const level = spaceLevel(car, now);
   if (car.state === "not-in-feed") {
     return (
       <div className={`spaces spaces-${level}`}>
-        <span className="spaces-count">—</span>
+        <span className="spaces-count">?</span>
         <span className="spaces-meta">No live count for this carpark</span>
       </div>
     );
@@ -39,9 +44,9 @@ function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
     // LTA DataMall gives a count with no time and no total, so it's shown as reported and never as "now".
     return (
       <div className={`spaces spaces-${level}`}>
-        <span className="spaces-count">{car.available}</span>
+        <span className="spaces-count">{lots.format(car.available ?? 0)}</span>
         <span className="spaces-meta">
-          car lots free, as reported
+          car lots available, as reported
           <br />
           LTA gives no time or total
         </span>
@@ -52,13 +57,13 @@ function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
   const label = current
     ? car.available === 0
       ? `full now, ${car.total} lots`
-      : `car lots free of ${car.total}`
+      : `car lots available, out of ${car.total}`
     : car.available === 0
       ? `full when last reported, ${car.total} lots`
-      : `car lots free of ${car.total}, when last reported`;
+      : `car lots available, out of ${car.total}, when last reported`;
   return (
     <div className={`spaces spaces-${level}`}>
-      <span className="spaces-count">{car.available}</span>
+      <span className="spaces-count">{lots.format(car.available ?? 0)}</span>
       <span className="spaces-meta">
         {label}
         <br />
@@ -93,10 +98,10 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
   const tags = source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
     CENTRAL_AREA_CARPARKS.has(carpark.id) ? "Central Area" : null,
     carpark.parkingSystem === "COUPON PARKING" ? "Coupon" : null,
-    carpark.freeParking !== "NO" ? `Free ${carpark.freeParking.replace("SUN & PH FR ", "Sun & PH ").toLowerCase()}` : null,
+    carpark.freeParking !== "NO" ? `Free Sun & PH, ${hours(carpark.freeParking.replace("SUN & PH FR ", ""))}` : null,
     carpark.nightParking ? "Night parking" : null,
-    carpark.shortTermParking !== "WHOLE DAY" ? `Short-term ${carpark.shortTermParking.toLowerCase()}` : null,
-    carpark.gantryHeightM ? `Gantry ${carpark.gantryHeightM} m` : null
+    carpark.shortTermParking !== "WHOLE DAY" ? `Short-term parking ${hours(carpark.shortTermParking)}` : null,
+    carpark.gantryHeightM ? `Height limit ${carpark.gantryHeightM} m` : null
   ].filter((tag): tag is string => Boolean(tag));
   const sub = source === "hdb" ? `${carpark.id} · ${distance(carpark.distanceM)} away · ${title(carpark.carparkType)}` : `${distance(carpark.distanceM)} away · ${carpark.carparkType}`;
 

@@ -132,7 +132,7 @@ async function getSource<S extends { fetchedAt: string }>(
     } catch (error) {
       // A storage failure while refreshing must not throw away the snapshot we already read.
       console.error(`ParkWhere ${source.name} refresh bookkeeping failed`, error);
-      read = { snapshot: read.snapshot, status: { ...read.status, lastAttemptAt: now.toISOString(), lastError: "Couldn't refresh availability." } };
+      read = { snapshot: read.snapshot, status: { ...read.status, lastAttemptAt: now.toISOString(), lastError: "the latest check didn't finish" } };
     }
   }
   memory.set(source.name, { read, at: now.getTime() });

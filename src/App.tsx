@@ -124,7 +124,7 @@ export default function App() {
     }
     const query = params.toString();
     window.history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
-    document.title = destination ? `Parking near ${destination.name} · ParkWhere` : "ParkWhere · Singapore HDB parking";
+    document.title = destination ? `Parking near ${destination.name} · ParkWhere` : "ParkWhere · Singapore parking";
   }, [destination, radiusM]);
 
   const queryKey = destination ? `${destination.lat},${destination.lng},${radiusM}` : null;
@@ -227,7 +227,7 @@ export default function App() {
               <h1 ref={hero} tabIndex={-1}>
                 Park near where you’re going.
               </h1>
-              <p>Live HDB car spaces, how fresh each count is, and what your stay should cost, before you arrive.</p>
+              <p>See available car lots near your destination, how recent each count is, and what your stay should cost, before you get there.</p>
             </div>
           )}
           <SearchBox destination={destination} onChoose={choose} prominent={!destination} />
@@ -263,7 +263,7 @@ export default function App() {
                 </p>
                 {load.kind === "error" && (
                   <p className="banner banner-bad">
-                    {data ? `Couldn't refresh (${load.message}). Showing results loaded ${age(shown ? new Date(shown.receivedAt).toISOString() : null, now)}.` : load.message}{" "}
+                    {data ? `Couldn't update the results (${load.message}). Showing results from ${age(shown ? new Date(shown.receivedAt).toISOString() : null, now)}.` : load.message}{" "}
                     <button type="button" className="link" onClick={() => setReloadKey((key) => key + 1)}>
                       Try again
                     </button>
@@ -278,7 +278,7 @@ export default function App() {
               {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
-                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, and mall and URA carparks that report to LTA.</p>
+                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, and the mall and URA carparks that report counts to LTA.</p>
                   ) : (
                     <>
                       {padded && (
@@ -305,7 +305,7 @@ export default function App() {
                           />
                         ))}
                       </ol>
-                      <p className="hint">{lotTypeNote} Distances are straight-line from your destination.</p>
+                      <p className="hint">{lotTypeNote} Distances are in a straight line from your destination.</p>
                     </>
                   )}
                 </div>
@@ -323,7 +323,7 @@ export default function App() {
               radiusM={data?.query.radiusM ?? radiusM}
               selectedId={selectedId}
               onSelect={select}
-              onSearchArea={(center) => choose({ name: "Map area", ...center })}
+              onSearchArea={(center) => choose({ name: "the map centre", ...center })}
             />
           </Suspense>
           {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}

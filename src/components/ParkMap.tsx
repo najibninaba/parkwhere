@@ -172,7 +172,7 @@ export default function ParkMap({ overview, overviewCurrent, destination, carpar
 
   return (
     <div className={`map-frame${tilesReady ? " map-ready" : ""}`}>
-      <div ref={element} className="map" role="region" aria-label={destination ? "Map of nearby carparks" : "Map of HDB carparks across Singapore"} />
+      <div ref={element} className="map" role="region" aria-label={destination ? "Map of nearby carparks" : "Map of carparks across Singapore"} />
       {!tilesReady && (
         <div className="map-skeleton" aria-hidden="true">
           <span>Loading map…</span>

@@ -12,9 +12,9 @@ export default defineConfig({
       injectRegister: "script",
       includeAssets: ["favicon.svg", "icons/favicon-32.png", "icons/apple-touch-icon-180.png"],
       manifest: {
-        name: "ParkWhere — Singapore HDB parking",
+        name: "ParkWhere: Singapore parking",
         short_name: "ParkWhere",
-        description: "Find an HDB carpark near where you're going, with live spaces and honest prices.",
+        description: "Find a carpark near where you're going in Singapore, with available car lots and price estimates.",
         theme_color: "#151412",
         background_color: "#f5f0e5",
         display: "standalone",

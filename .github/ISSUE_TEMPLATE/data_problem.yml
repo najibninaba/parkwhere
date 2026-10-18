@@ -1,0 +1,34 @@
+name: Carpark data looks wrong
+description: A count, price, location or detail doesn't match what you saw at the carpark.
+labels: [data]
+body:
+  - type: input
+    id: carpark
+    attributes:
+      label: Carpark
+      description: The name and code on the card, e.g. "Blk 270/271 Albert Centre Basement Car Park (ACB)".
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What looks wrong
+      options:
+        - Car lot count
+        - Price estimate or rates
+        - Location or directions
+        - Opening hours, height limit or other detail
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What ParkWhere showed, what you saw at the carpark, and when (date and time).
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Counts come from HDB (data.gov.sg) and LTA DataMall, and prices from HDB's published rates. If the source data is wrong, we may not be able to fix it here, but a report still helps.

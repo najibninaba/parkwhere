@@ -21,7 +21,7 @@ export function age(iso: string | null, now: number): string {
 }
 
 export function clock(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "time unknown";
   return new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }).format(new Date(iso));
 }
 
@@ -34,24 +34,24 @@ export function stay(minutes: number): string {
 
 export function feedSentence(feed: FeedStatus, now: number): { tone: "ok" | "warn" | "bad"; text: string } {
   if (feed.state === "unavailable") {
-    return { tone: "bad", text: `Live spaces are unavailable${feed.refreshError ? `: ${feed.refreshError}` : ""}. Carparks and prices are still shown.` };
+    return { tone: "bad", text: `HDB counts are unavailable${feed.refreshError ? ` (${feed.refreshError})` : ""}. Carparks and prices are still shown.` };
   }
   if (feed.state === "last-good") {
-    const why = feed.refreshError ? `Latest refresh failed (${feed.refreshError}). ` : "";
-    return { tone: "warn", text: `${why}Showing the last good HDB data, fetched ${age(feed.fetchedAt, now)}.` };
+    const why = feed.refreshError ? `The latest HDB check failed (${feed.refreshError}). ` : "";
+    return { tone: "warn", text: `${why}Showing HDB counts checked ${age(feed.fetchedAt, now)}.` };
   }
   if (!feed.fetchedAt || now - new Date(feed.fetchedAt).getTime() > FEED_LIVE_MS) {
-    return { tone: "warn", text: `HDB data was fetched ${age(feed.fetchedAt, now)} and hasn't been refreshed since.` };
+    return { tone: "warn", text: `HDB counts were checked ${age(feed.fetchedAt, now)} and may be out of date.` };
   }
-  return { tone: "ok", text: `HDB data fetched ${age(feed.fetchedAt, now)}.` };
+  return { tone: "ok", text: `HDB counts checked ${age(feed.fetchedAt, now)}.` };
 }
 
 /** The LTA DataMall line, shown when LTA or URA carparks are in the results. */
 export function ltaSentence(lta: FeedStatus, now: number): { tone: "ok" | "warn" | "bad"; text: string } {
-  if (lta.state === "unavailable") return { tone: "bad", text: `Mall and URA counts are unavailable${lta.refreshError ? `: ${lta.refreshError}` : ""}.` };
-  const fetched = `Mall and URA counts from LTA DataMall, fetched ${age(lta.fetchedAt, now)}. LTA doesn't say when each carpark last reported.`;
-  if (lta.state === "last-good") return { tone: "warn", text: `${lta.refreshError ? `Latest LTA refresh failed (${lta.refreshError}). ` : ""}${fetched}` };
+  if (lta.state === "unavailable") return { tone: "bad", text: `Mall and URA counts are unavailable${lta.refreshError ? ` (${lta.refreshError})` : ""}.` };
+  const fetched = `Mall and URA counts from LTA, checked ${age(lta.fetchedAt, now)}. LTA doesn't give the time of each count.`;
+  if (lta.state === "last-good") return { tone: "warn", text: `${lta.refreshError ? `The latest LTA check failed (${lta.refreshError}). ` : ""}${fetched}` };
   return { tone: "ok", text: fetched };
 }
 
-export const lotTypeNote = "Counts are car lots free in the whole carpark when it last reported, not a reservation, and not a forecast for when you arrive.";
+export const lotTypeNote = "Each count is the number of car lots available in the whole carpark when it last reported. It doesn't reserve a lot or predict what you'll find when you arrive.";
