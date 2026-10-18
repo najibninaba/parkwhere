@@ -87,6 +87,12 @@ describe("ParkWhere app", () => {
     expect(document.querySelector(".card")).toBeNull();
   });
 
+  it("signs the footer as a najibninaba project", () => {
+    render(<App />);
+    expect(screen.getByRole("link", { name: "A najibninaba project" })).toHaveAttribute("href", "https://najibninaba.com");
+    expect(screen.getByText("© 2026 Najib Ninaba")).toBeInTheDocument();
+  });
+
   it("starts a search from a quick pick", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -270,12 +276,71 @@ describe("ParkWhere app", () => {
     expect(screen.getByText(/Mall and URA counts from LTA, checked 2 min ago/)).toBeInTheDocument();
   });
 
+  it("shows an OpenStreetMap carpark with no count, no price and its source", async () => {
+    nearbyResponse = () =>
+      Response.json(
+        nearby({
+          carparks: [
+            {
+              ...base,
+              source: "osm",
+              id: "osm:way/177625322",
+              address: "Wildlife Reserves Singapore carpark",
+              carparkType: "Multi-storey carpark",
+              parkingSystem: "UNKNOWN",
+              shortTermParking: "UNKNOWN",
+              freeParking: "UNKNOWN",
+              nightParking: false,
+              gantryHeightM: null,
+              distanceM: 489,
+              osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true, named: false },
+              car: { reportedBy: null, state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" }
+            }
+          ]
+        })
+      );
+    const user = await searchAndChoose();
+    // Its own capitalisation is kept, not title-cased like HDB registry addresses.
+    const card = (await screen.findByText("Wildlife Reserves Singapore carpark")).closest("li")!;
+    expect(within(card).getByText("No live count for this carpark")).toBeInTheDocument();
+    expect(within(card).getByText("No estimate")).toBeInTheDocument();
+    expect(within(card).getByText("Mapped on OpenStreetMap")).toBeInTheDocument();
+    expect(within(card).queryByText("0")).not.toBeInTheDocument();
+    await user.click(within(card).getByText("Directions"));
+    expect(within(card).getByText(/entrance mapped on OpenStreetMap, which ParkWhere hasn.t verified/)).toBeInTheDocument();
+    await user.click(within(card).getByText("Rates"));
+    expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/way/177625322");
+  });
+
   it("says when LTA is down even if no mall carparks are listed", async () => {
     nearbyResponse = () => Response.json(nearby({ lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() } }));
     await searchAndChoose();
     expect(await screen.findByText(/Mall and URA counts are unavailable \(LTA DataMall returned HTTP 503\)/, { selector: ".banner" })).toBeInTheDocument();
     expect(screen.getByText(/in the whole carpark when it last reported\. It doesn.t reserve a lot/)).toBeInTheDocument();
     expect(screen.queryByText(/right now/)).not.toBeInTheDocument();
+  });
+
+  it("counts a search as one lookup, and the first directions opened for it, anonymously", async () => {
+    const beacons: string[] = [];
+    vi.stubGlobal("navigator", Object.assign(Object.create(navigator), {
+      sendBeacon: (url: string, body: Blob) => {
+        void body.text().then((text) => beacons.push(`${url} ${text}`));
+        return true;
+      }
+    }));
+    const user = await searchAndChoose();
+    const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
+    const nearbyUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith("/api/nearby"));
+    expect(nearbyUrls[0]).toContain("c=1&via=search");
+    expect(nearbyUrls[0]).not.toContain("name=");
+    await user.click(within(card).getByText("Directions"));
+    const google = within(card).getByRole("link", { name: "Google Maps" });
+    google.addEventListener("click", (event) => event.preventDefault());
+    await user.click(google);
+    await user.click(within(card).getByRole("link", { name: "Waze" }));
+    await vi.waitFor(() => expect(beacons).toHaveLength(2));
+    expect(JSON.parse(beacons[0].replace("/api/event ", ""))).toEqual({ event: "directions", app: "google", source: "hdb", first: true, display: "browser" });
+    expect(JSON.parse(beacons[1].replace("/api/event ", ""))).toMatchObject({ app: "waze", first: false });
   });
 
   it("opens directions in external map apps", async () => {

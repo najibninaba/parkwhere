@@ -2,7 +2,7 @@
   "name": "parkwhere",
   "private": true,
   "version": "0.1.0",
-  "description": "Find a carpark near where you're going in Singapore, with available car lots and price estimates.",
+  "description": "Singapore parking finder: nearby carparks, available car lots and estimated parking costs.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,6 +16,8 @@
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
     "registry": "node scripts/sync-registry.ts",
+    "osm": "node scripts/sync-osm.ts",
+    "stats": "node scripts/stats.ts",
     "deploy": "pnpm build && wrangler deploy",
     "check:mobile": "node scripts/mobile-check.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build",
@@ -47,6 +49,11 @@
     "vite": "8.3.4",
     "vite-plugin-pwa": "2.0.0",
     "vitest": "5.0.5",
+    "workbox-core": "7.4.1",
+    "workbox-precaching": "7.4.1",
+    "workbox-routing": "7.4.1",
+    "workbox-strategies": "7.4.1",
+    "workbox-window": "7.4.1",
     "wrangler": "4.151.1"
   }
 }

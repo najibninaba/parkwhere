@@ -4,6 +4,7 @@
 //   pnpm check:mobile [baseUrl]
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { markAsCheck } from "./check-traffic.ts";
 
 const base = process.argv[2] ?? "http://localhost:5173";
 const out = new URL("../screenshots/", import.meta.url);
@@ -20,9 +21,16 @@ let failures = 0;
 try {
   for (const device of devices) {
     const context = await browser.newContext({ viewport: { width: device.width, height: device.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    await markAsCheck(context);
     const page = await context.newPage();
+    // Right after a deploy the first load can be slow; allow 30 s and one reload before failing.
     await page.goto(base + path, { waitUntil: "networkidle" });
-    await page.locator(".card").first().waitFor({ timeout: 15_000 });
+    try {
+      await page.locator(".card").first().waitFor({ timeout: 30_000 });
+    } catch {
+      await page.reload({ waitUntil: "networkidle" });
+      await page.locator(".card").first().waitFor({ timeout: 30_000 });
+    }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     const smallTargets = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>("button, a.button, summary, input, select")]

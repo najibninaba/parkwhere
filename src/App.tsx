@@ -4,6 +4,8 @@ import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore } from "../shared/nea
 import { parseSgtLocal, toSgtLocal } from "../shared/sgt";
 import { estimateCost, type CostEstimate } from "../shared/tariff";
 import { ApiError, fetchNearby, fetchOverview } from "./api";
+import type { NavApp } from "./navigation";
+import { countDirections, reloaded } from "./usage";
 import { withTimeout } from "./timeout";
 import { CardSkeleton } from "./components/CardSkeleton";
 import { CarparkCard } from "./components/CarparkCard";
@@ -28,7 +30,7 @@ function destinationFromUrl(): Destination | null {
   const lat = Number(params.get("lat"));
   const lng = Number(params.get("lng"));
   if (!params.has("lat") || !params.has("lng") || !isInSingapore(lat, lng)) return null;
-  return { lat, lng, name: params.get("name")?.slice(0, 80) || "Shared location" };
+  return { lat, lng, name: params.get("name")?.slice(0, 80) || "Shared location", via: reloaded ? undefined : "link" };
 }
 
 function radiusFromUrl(): number {
@@ -128,6 +130,9 @@ export default function App() {
   }, [destination, radiusM]);
 
   const queryKey = destination ? `${destination.lat},${destination.lng},${radiusM}` : null;
+  // The destination whose first request has been sent: later requests (refreshes, radius changes) carry
+  // no "via", so each destination counts as one lookup.
+  const lookupSent = useRef<Destination | null>(null);
 
   useEffect(() => {
     if (!destination || !queryKey) return;
@@ -139,8 +144,11 @@ export default function App() {
       inFlight = true;
       setLoad((current) => ({ kind: "loading", key: queryKey, previous: previousFor(current, queryKey) }));
       const request = withTimeout(controller.signal, REQUEST_TIMEOUT_MS);
-      fetchNearby(destination.lat, destination.lng, radiusM, request.signal)
+      const via = lookupSent.current === destination ? undefined : destination.via;
+      fetchNearby(destination.lat, destination.lng, radiusM, request.signal, via)
         .then((data) => {
+          // Marked only once a response arrives, so a failed or abandoned first request is retried with it.
+          lookupSent.current = destination;
           if (controller.signal.aborted) return;
           setLoad({ kind: "ready", key: queryKey, data, receivedAt: Date.now() });
           setNow(Date.now());
@@ -201,6 +209,13 @@ export default function App() {
     (destination ? results.current : hero.current)?.focus({ preventScroll: true });
   }, [destination]);
 
+  // The first directions opened for a destination is marked, so lookups with a hand-off can be counted.
+  const directionsCounted = useRef<Destination | null>(null);
+  const onDirections = (app: NavApp, carpark: NearbyCarpark) => {
+    countDirections(app, carpark.source ?? "hdb", directionsCounted.current !== destination);
+    directionsCounted.current = destination;
+  };
+
   const choose = (next: Destination | null) => {
     setSelectedId(null);
     moveFocus.current = true;
@@ -227,7 +242,7 @@ export default function App() {
               <h1 ref={hero} tabIndex={-1}>
                 Park near where you’re going.
               </h1>
-              <p>See available car lots near your destination, how recent each count is, and what your stay should cost, before you get there.</p>
+              <p>See nearby carparks, available car lots and estimated parking costs before you get there.</p>
             </div>
           )}
           <SearchBox destination={destination} onChoose={choose} prominent={!destination} />
@@ -278,7 +293,7 @@ export default function App() {
               {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
-                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, and the mall and URA carparks that report counts to LTA.</p>
+                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap.</p>
                   ) : (
                     <>
                       {padded && (
@@ -301,6 +316,7 @@ export default function App() {
                             durationMinutes={durationMinutes}
                             selected={carpark.id === selectedId}
                             onSelect={() => setSelectedId(carpark.id)}
+                            onDirections={(app) => onDirections(app, carpark)}
                             now={now}
                           />
                         ))}
@@ -323,7 +339,7 @@ export default function App() {
               radiusM={data?.query.radiusM ?? radiusM}
               selectedId={selectedId}
               onSelect={select}
-              onSearchArea={(center) => choose({ name: "the map centre", ...center })}
+              onSearchArea={(center) => choose({ name: "the map centre", ...center, via: "area" })}
             />
           </Suspense>
           {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}

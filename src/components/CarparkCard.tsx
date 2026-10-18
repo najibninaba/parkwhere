@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { NearbyCarpark } from "../../shared/domain";
 import { CENTRAL_AREA_CARPARKS, TARIFF_SOURCE, TARIFF_URL, publishedRate, type CostEstimate } from "../../shared/tariff";
 import { age, clock, distance, isCurrent, money, spaceLevel, stay } from "../format";
-import { NAV_APPS, navigationUrl } from "../navigation";
+import { NAV_APPS, navigationUrl, type NavApp } from "../navigation";
 
 interface Props {
   carpark: NearbyCarpark;
@@ -11,6 +11,8 @@ interface Props {
   durationMinutes: number;
   selected: boolean;
   onSelect: () => void;
+  /** Called when a map app is opened, for the anonymous hand-off count. */
+  onDirections?: (app: NavApp) => void;
   now: number;
 }
 
@@ -92,10 +94,14 @@ function Cost({ estimate, durationMinutes }: { estimate: CostEstimate; durationM
   );
 }
 
-export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, now }: Props) {
+export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, now }: Props) {
   const [open, setOpen] = useState(false);
   const source = carpark.source ?? "hdb";
-  const tags = source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
+  const tags = source === "osm" ? [
+    "Mapped on OpenStreetMap",
+    carpark.osm?.access === "customers" ? "Customers only" : null,
+    carpark.gantryHeightM ? `Height limit ${carpark.gantryHeightM} m` : null
+  ].filter((tag): tag is string => Boolean(tag)) : source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
     CENTRAL_AREA_CARPARKS.has(carpark.id) ? "Central Area" : null,
     carpark.parkingSystem === "COUPON PARKING" ? "Coupon" : null,
     carpark.freeParking !== "NO" ? `Free Sun & PH, ${hours(carpark.freeParking.replace("SUN & PH FR ", ""))}` : null,
@@ -110,7 +116,8 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
       <button type="button" className="card-main" onClick={onSelect} aria-pressed={selected}>
         <span className="rank" aria-hidden="true">{rank}</span>
         <span className="card-head">
-          <span className="card-name">{title(carpark.address)}</span>
+          {/* Registry addresses are upper case; LTA and OpenStreetMap names keep their own case ("NEX", "ION"). */}
+          <span className="card-name">{source === "hdb" ? title(carpark.address) : carpark.address}</span>
           <span className="card-sub">
             {sub}
           </span>
@@ -130,11 +137,15 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
           <summary className="button button-primary">Directions</summary>
           <div className="directions-menu">
             {NAV_APPS.map((app) => (
-              <a key={app.id} className="button" href={navigationUrl(app.id, carpark)} target="_blank" rel="noopener noreferrer">
+              <a key={app.id} className="button" href={navigationUrl(app.id, carpark)} target="_blank" rel="noopener noreferrer" onClick={() => onDirections?.(app.id)}>
                 {app.label}
               </a>
             ))}
-            <p className="hint">Goes to the carpark's mapped location, which may not be its entrance.</p>
+            <p className="hint">
+              {carpark.osm?.atEntrance
+                ? "Goes to an entrance mapped on OpenStreetMap, which ParkWhere hasn't verified. Look for the signs when you get there."
+                : "Goes to the carpark's mapped location, which may not be its entrance."}
+            </p>
           </div>
         </details>
         <details className="rate">
@@ -151,6 +162,11 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
             {source === "hdb" && (
               <p className="hint">
                 Source: <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a>
+              </p>
+            )}
+            {carpark.osm && (
+              <p className="hint">
+                Location from <a href={carpark.osm.url} target="_blank" rel="noopener noreferrer">OpenStreetMap</a>, which gives no counts or rates.
               </p>
             )}
           </div>

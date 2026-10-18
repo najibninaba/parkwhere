@@ -1,10 +1,24 @@
 import { HOLIDAYS_SOURCE } from "../../shared/holidays";
 import { TARIFF_SOURCE, TARIFF_URL } from "../../shared/tariff";
 
+/** The maker's mark shared with Cuaca: "A najibninaba project", the name in Caslon italic. */
+export function Signature() {
+  return (
+    <a className="signature" href="https://najibninaba.com" target="_blank" rel="noopener noreferrer">
+      A <em>najibninaba</em> project
+    </a>
+  );
+}
+
 export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null }) {
   const registryDate = registryFetchedAt ? new Date(registryFetchedAt).toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" }) : null;
   return (
-    <footer className="footer">
+    <footer className="footer" aria-label="Sources and project">
+      <div className="footer-meta">
+        <span>data.gov.sg · LTA · OneMap · OpenStreetMap</span>
+        <Signature />
+        <span>© 2026 Najib Ninaba</span>
+      </div>
       <h2 className="label">Sources</h2>
       <p>
         Contains information from{" "}
@@ -22,8 +36,15 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
         Prices follow <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a> and {HOLIDAYS_SOURCE}. Estimates assume one continuous stay in a regular (non-season) lot; the charge at the gantry is what counts.
       </p>
       <p>
-        Maps © OneMap contributors, Singapore Land Authority. ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.
+        Public carparks without counts are from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>, available under the{" "}
+        <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Database Licence</a>.
       </p>
+      <p>Maps © OneMap contributors, Singapore Land Authority.</p>
+      <h2 className="label">Privacy</h2>
+      <p>
+        To see whether it's useful, ParkWhere counts page loads, lookups, place searches, directions opened and errors, with the device type, country and referring site. It uses no cookies and doesn't record IDs, IP addresses, search text or exact locations. Nothing is counted when your browser sends Global Privacy Control or Do Not Track.
+      </p>
+      <p>ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.</p>
     </footer>
   );
 }

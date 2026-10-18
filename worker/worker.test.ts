@@ -246,7 +246,10 @@ describe("Worker routes", () => {
       const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
-      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5);
+      // Five LTA and URA dots are added. OpenStreetMap carparks that duplicate them are left out, so the
+      // total grows by at most five.
+      expect(withLta.counts.carparks).toBeGreaterThan(without.counts.carparks);
+      expect(withLta.counts.carparks).toBeLessThanOrEqual(without.counts.carparks + 5);
       expect(withLta.lta?.state).toBe("live");
       expect(without.lta).toBeNull();
       expect(withLta.counts.reporting).toBe(without.counts.reporting);
@@ -268,6 +271,8 @@ describe("Worker routes", () => {
       const body = (await (await call("/api/nearby?lat=1.29375&lng=103.85718&radius=500", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
       const suntec = body.carparks.find((carpark) => carpark.id === "lta:1");
       expect(suntec).toMatchObject({ source: "lta", address: "Suntec City", car: { reportedBy: "LTA", available: 967, total: null, recordedAt: null } });
+      // OpenStreetMap also maps Suntec City, 89 m away; it's the same carpark, so it isn't listed again without a count.
+      expect(body.carparks.filter((carpark) => /suntec city/i.test(carpark.address))).toHaveLength(1);
       expect(body.lta?.state).toBe("live");
     } finally {
       globalThis.fetch = original;
@@ -285,6 +290,101 @@ describe("Worker routes", () => {
     } finally {
       globalThis.fetch = original;
     }
+  });
+
+  it("lists public carparks mapped on OpenStreetMap, with no count and no price", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+    try {
+      // Singapore Zoo, as OneMap places it. No HDB carpark is within 2 km.
+      const body = (await (await call("/api/nearby?lat=1.40433&lng=103.79304&radius=500", env())).json()) as NearbyResponse;
+      const zoo = body.carparks.find((carpark) => carpark.id === "osm:way/177625322");
+      expect(zoo).toMatchObject({
+        source: "osm",
+        address: "Wildlife Reserves Singapore carpark",
+        carparkType: "Multi-storey carpark",
+        osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true, named: false },
+        car: { reportedBy: null, state: "not-in-feed", available: null }
+      });
+      expect(body.withinRadius).toBeGreaterThanOrEqual(1);
+      const health = (await (await call("/health", env())).json()) as { osmCarparks: number };
+      expect(health.osmCarparks).toBeGreaterThan(200);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  describe("usage counts", () => {
+    const ua = { "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148 Safari/604.1" };
+    const recorder = () => {
+      const points: { indexes: string[]; blobs: string[]; doubles: number[] }[] = [];
+      return { points, EVENTS: { writeDataPoint: (point: { indexes: string[]; blobs: string[]; doubles: number[] }) => points.push(point) } };
+    };
+    const get = (path: string, e: Env, headers: Record<string, string> = ua) => worker.fetch(new Request(`https://parkwhere.test${path}`, { headers }), e, ctx);
+
+    it("counts a lookup once per destination, with a visit on the page's first request", async () => {
+      const original = globalThis.fetch;
+      globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+      try {
+        const { points, EVENTS } = recorder();
+        const e = env({ EVENTS } as unknown as Partial<Env>);
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&c=1&via=search&first=1&ref=www.google.com", e);
+        // A refresh carries no "via": not another lookup.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&c=1", e);
+        // Without c=1 (counting off in the browser) nothing is counted, even with via.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&via=search", e);
+        expect(points.map((point) => point.indexes[0])).toEqual(["visit", "lookup"]);
+        expect(points[0].blobs).toEqual(["v1", "browser", "mobile", "", "google.com"]);
+        // The zoo's OpenStreetMap carpark is 493 m away, inside 500 m, with no count; no gap area is written.
+        expect(points[1].blobs.slice(0, 3)).toEqual(["v1", "search", "no-count"]);
+        expect(points[1].blobs[8]).toBe("");
+        // Within 300 m there's nothing, so the lookup is a gap and its rough area is written.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=300&c=1&via=search", e);
+        expect(points[2].blobs.slice(2, 3)).toEqual(["outside-radius"]);
+        expect(points[2].blobs[8]).toBe("1.40,103.78");
+        // A link (which includes reloading a Near me result) never records an area.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=300&c=1&via=link", e);
+        expect(points[3].blobs[8]).toBe("");
+        expect(JSON.stringify(points)).not.toContain("1.40433");
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it("counts nothing for Global Privacy Control, Do Not Track, bots or previews without the binding", async () => {
+      const original = globalThis.fetch;
+      globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+      try {
+        const { points, EVENTS } = recorder();
+        const e = env({ EVENTS } as unknown as Partial<Env>);
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { ...ua, "sec-gpc": "1" });
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { ...ua, dnt: "1" });
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { "user-agent": "curl/8.7.1" });
+        await get("/api/search?q=bugis", e, { ...ua, "sec-gpc": "1" });
+        await get("/api/search?q=bugis", e);
+        expect(points).toEqual([]);
+        expect((await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", env())).status).toBe(200);
+      } finally {
+        globalThis.fetch = original;
+      }
+    });
+
+    it("accepts only same-origin, allowlisted directions events, and always answers 204", async () => {
+      const { points, EVENTS } = recorder();
+      const e = env({ EVENTS } as unknown as Partial<Env>);
+      const post = (body: string, headers: Record<string, string>) =>
+        worker.fetch(new Request("https://parkwhere.test/api/event", { method: "POST", body, headers: { ...ua, ...headers } }), e, ctx);
+      const good = JSON.stringify({ event: "directions", app: "waze", source: "osm", first: true, display: "standalone" });
+      expect((await post(good, { "sec-fetch-site": "same-origin" })).status).toBe(204);
+      expect((await post(good, { "sec-fetch-site": "cross-site" })).status).toBe(204);
+      expect((await post(good, { origin: "https://evil.example" })).status).toBe(204);
+      // A same-origin fetch-site header doesn't excuse a foreign Origin, and neither header means no count.
+      expect((await post(good, { "sec-fetch-site": "same-origin", origin: "https://evil.example" })).status).toBe(204);
+      expect((await post(good, {})).status).toBe(204);
+      expect((await post(JSON.stringify({ event: "directions", pad: "x".repeat(4000) }), { "sec-fetch-site": "same-origin" })).status).toBe(204);
+      expect((await post(JSON.stringify({ event: "pageview", url: "/x" }), { "sec-fetch-site": "same-origin" })).status).toBe(204);
+      expect(points).toEqual([{ indexes: ["directions"], blobs: ["v1", "waze", "osm", "first", "standalone", ""], doubles: [] }]);
+    });
   });
 
   it("still lists carparks when the availability feed is down", async () => {

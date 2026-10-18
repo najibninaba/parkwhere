@@ -89,12 +89,12 @@ jobs:
         run: |
           set -euo pipefail
           for _ in $(seq 1 15); do
-            code=$(curl -s -o nearby.json -w '%{http_code}' "$URL/api/nearby?lat=1.30106&lng=103.85412") || true
+            code=$(curl -s -H 'x-parkwhere-check: 1' -o nearby.json -w '%{http_code}' "$URL/api/nearby?lat=1.30106&lng=103.85412") || true
             [ "$code" = "200" ] && break
             sleep 4
           done
           python3 -c "import json; d=json.load(open('nearby.json')); assert d['carparks'], 'no carparks'; print('feed:', d['feed']['state'], '| carparks:', len(d['carparks']))"
-          echo "health: $(curl -s -o /dev/null -w '%{http_code}' "$URL/health") (advisory: depends on data.gov.sg)"
+          echo "health: $(curl -s -H 'x-parkwhere-check: 1' -o /dev/null -w '%{http_code}' "$URL/health") (advisory: depends on data.gov.sg)"
 
       - name: Check phones on staging
         run: pnpm check:mobile "$URL"
@@ -141,12 +141,12 @@ jobs:
         run: |
           set -euo pipefail
           for _ in $(seq 1 15); do
-            code=$(curl -s -o nearby.json -w '%{http_code}' "$URL/api/nearby?lat=1.30106&lng=103.85412") || true
+            code=$(curl -s -H 'x-parkwhere-check: 1' -o nearby.json -w '%{http_code}' "$URL/api/nearby?lat=1.30106&lng=103.85412") || true
             [ "$code" = "200" ] && break
             sleep 4
           done
           python3 -c "import json; d=json.load(open('nearby.json')); assert d['carparks'], 'no carparks'; print('feed:', d['feed']['state'], '| carparks:', len(d['carparks']))"
-          echo "health: $(curl -s -o /dev/null -w '%{http_code}' "$URL/health") (advisory: depends on data.gov.sg)"
+          echo "health: $(curl -s -H 'x-parkwhere-check: 1' -o /dev/null -w '%{http_code}' "$URL/health") (advisory: depends on data.gov.sg)"
 
       - name: Check phones on production
         run: pnpm check:mobile "$URL"

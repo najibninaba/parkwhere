@@ -5,6 +5,7 @@
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright-core";
+import { CHECK_HEADERS, markAsCheck } from "./check-traffic.ts";
 
 const [baseUrl, outDir = "proof"] = process.argv.slice(2);
 if (!baseUrl) {
@@ -19,11 +20,11 @@ const checks: Check[] = [];
 const check = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
 
 async function api() {
-  const nearby = await fetch(`${base}/api/nearby?lat=1.30106&lng=103.85412&radius=500`);
+  const nearby = await fetch(`${base}/api/nearby?lat=1.30106&lng=103.85412&radius=500`, { headers: CHECK_HEADERS });
   const body = nearby.ok ? ((await nearby.json()) as { carparks: unknown[]; feed: { state: string; refreshError: string | null } }) : null;
   check("API /api/nearby", nearby.ok && Boolean(body?.carparks.length), `HTTP ${nearby.status}, ${body?.carparks.length ?? 0} carparks`);
   check("Availability feed", body?.feed.state === "live", body ? `${body.feed.state}${body.feed.refreshError ? ` (${body.feed.refreshError})` : ""}` : "no response");
-  const health = await fetch(`${base}/health`);
+  const health = await fetch(`${base}/health`, { headers: CHECK_HEADERS });
   check("GET /health", health.status === 200, `HTTP ${health.status}`);
 }
 
@@ -61,6 +62,7 @@ async function capture() {
       timezoneId: "Asia/Singapore",
       recordVideo: { dir: videoDir, size: { width: 390, height: 844 } }
     });
+    await markAsCheck(phone);
     const page = await phone.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -96,6 +98,7 @@ async function capture() {
 
     // Smallest phone.
     const small = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await markAsCheck(small);
     const smallPage = await small.newPage();
     await smallPage.goto(`${base}${destination}`, { waitUntil: "networkidle" });
     await smallPage.locator(".card").first().waitFor({ timeout: 20_000 });
@@ -104,6 +107,7 @@ async function capture() {
 
     // Desktop.
     const desktop = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    await markAsCheck(desktop);
     const desktopPage = await desktop.newPage();
     await desktopPage.goto(`${base}${destination}`, { waitUntil: "networkidle" });
     await desktopPage.locator(".card").first().waitFor({ timeout: 20_000 });

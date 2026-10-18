@@ -1,7 +1,10 @@
 // Shared types for the Worker API and the app. Keep this file free of runtime dependencies.
 
-/** Who runs a carpark and where its data comes from. HDB carparks come from data.gov.sg; LTA and URA ones from LTA DataMall. */
-export type CarparkSource = "hdb" | "lta" | "ura";
+/**
+ * Who runs a carpark and where its data comes from. HDB carparks come from data.gov.sg; LTA and URA ones
+ * from LTA DataMall; "osm" ones are public carparks mapped on OpenStreetMap, with no count and no price.
+ */
+export type CarparkSource = "hdb" | "lta" | "ura" | "osm";
 
 /**
  * One carpark. HDB carparks come from the static registry (data.gov.sg "HDB Carpark Information");
@@ -25,6 +28,8 @@ export interface RegistryCarpark {
   /** Metres; null when the registry gives 0 or nothing. */
   gantryHeightM: number | null;
   basement: boolean;
+  /** OpenStreetMap carparks only. */
+  osm?: OsmDetails;
 }
 
 export interface RegistryFile {
@@ -75,8 +80,8 @@ export interface FeedStatus {
 export type RecordFreshness = "current" | "delayed" | "stale" | "unknown";
 
 export interface CarAvailability {
-  /** HDB counts carry a record time and total; LTA DataMall counts have neither. */
-  reportedBy: "HDB" | "LTA";
+  /** HDB counts carry a record time and total; LTA DataMall counts have neither. Null: no source gives counts. */
+  reportedBy: "HDB" | "LTA" | null;
   state: "known" | "unknown" | "not-in-feed";
   available: number | null;
   total: number | null;
@@ -141,4 +146,45 @@ export interface LtaSnapshot {
   /** When ParkWhere received the feed. LTA gives no record or feed time, so this is the only time we have. */
   fetchedAt: string;
   carparks: LtaCarpark[];
+}
+
+/** Access as tagged on OpenStreetMap. Only these explicit tags are kept; a missing tag never counts as public. */
+export type OsmAccess = "yes" | "customers" | "permissive";
+
+export interface OsmDetails {
+  /** The mapped object, e.g. https://www.openstreetmap.org/way/177625322 */
+  url: string;
+  access: OsmAccess;
+  /** True when the point is a mapped carpark entrance; otherwise it's the middle of the mapped carpark. */
+  atEntrance: boolean;
+  /** False when OpenStreetMap gives no name, so the card shows what it is ("Underground carpark entrance"). */
+  named: boolean;
+}
+
+/** A public carpark or carpark entrance mapped on OpenStreetMap, as written by scripts/sync-osm.ts. */
+export interface OsmCarpark {
+  /** "way/177625322", "node/123", "relation/9". */
+  id: string;
+  kind: "carpark" | "entrance";
+  name: string | null;
+  operator: string | null;
+  parking: "multi-storey" | "underground" | "surface" | "rooftop" | null;
+  access: OsmAccess;
+  /** From maxheight, in metres, when it's a plain number. */
+  maxHeightM: number | null;
+  lat: number;
+  lng: number;
+  atEntrance: boolean;
+}
+
+export interface OsmFile {
+  source: {
+    name: "OpenStreetMap";
+    licence: "ODbL-1.0";
+    /** The Geofabrik extract it was cut from. */
+    extract: string;
+    /** When the extract's data was current (its replication timestamp). No build time, so an unchanged refresh leaves the file unchanged. */
+    dataAt: string | null;
+  };
+  carparks: OsmCarpark[];
 }
