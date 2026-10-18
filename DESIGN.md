@@ -184,6 +184,8 @@ A civic palette: warm paper and near-black ink, one blue for action, one yellow 
 - **Body** (400, 16px, 1.5): sentences. Hints and metadata use 13 to 15px in Ink Mute.
 - **Label** (600, 12px, 0.06em, uppercase): field names, buttons and the legend. Buttons use 13px.
 
+- **Signature** (Plex Mono 600, 11px, uppercase, with the name in Libre Caslon Text Italic at 1.55em): "A *najibninaba* project" in the footer's metadata row, between the sources and "© 2026 Najib Ninaba". It's the maker's mark shared with Cuaca, links to https://najibninaba.com, has no colour of its own and underlines the name on hover. Caslon appears nowhere else.
+
 ### Named Rules
 **The Tabular Count Rule.** Any number that updates (counts, prices, the live line) uses tabular figures, and its box never shrinks below its digits.
 

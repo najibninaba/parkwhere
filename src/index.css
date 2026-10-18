@@ -531,6 +531,38 @@ p, dd { text-wrap: pretty; }
   color: var(--ink-mute);
 }
 .footer p { max-width: 75ch; }
+/* Mono metadata row with the maker's mark, as on Cuaca. Wraps to stacked lines on narrow phones. */
+.footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px 24px;
+  padding-bottom: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.signature {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  min-height: 40px;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+.signature em {
+  font-family: "Libre Caslon Text", Georgia, serif;
+  font-weight: 400;
+  font-size: 1.55em;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.signature:hover em { text-decoration: underline 1.5px; text-underline-offset: 3px; }
 
 .leaflet-container { font-family: var(--font-body); }
 @media (max-width: 899px) {
