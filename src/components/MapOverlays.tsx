@@ -14,8 +14,8 @@ export function overviewIsCurrent(overview: OverviewResponse | null, now: number
 function ltaNote(overview: OverviewResponse): string {
   const lta = overview.lta;
   if (!lta) return "";
-  if (lta.state === "unavailable") return " · mall and URA carparks unavailable";
-  if (lta.state === "last-good" || lta.refreshError) return " · mall and URA data out of date";
+  if (lta.state === "unavailable") return " · mall and URA counts unavailable";
+  if (lta.state === "last-good" || lta.refreshError) return " · mall and URA counts out of date";
   return "";
 }
 
@@ -25,7 +25,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
     return (
       <p className="map-chip map-live">
         <span className="live-dot live-dot-off" aria-hidden="true" />
-        Couldn't load live counts. Search still works.
+        Couldn't load counts. Search still works.
       </p>
     );
   }
@@ -33,7 +33,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
     return (
       <p className="map-chip map-live" aria-live="polite">
         <span className="live-dot live-dot-waiting" aria-hidden="true" />
-        Checking live HDB counts…
+        Checking HDB counts…
       </p>
     );
   }
@@ -43,7 +43,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
     return (
       <p className="map-chip map-live">
         <span className="live-dot live-dot-off" aria-hidden="true" />
-        Live counts unavailable. Carparks are still shown.{ltaNote(overview)}
+        HDB counts are unavailable. Carparks are still shown.{ltaNote(overview)}
       </p>
     );
   }
@@ -53,11 +53,11 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
       <p className="map-chip map-live">
         <span className="live-dot live-dot-off" aria-hidden="true" />
         <span>
-          Live counts are out of date
+          HDB counts are out of date
           <span className="map-chip-meta">
             {" "}
-            · last updated {age(feed.fetchedAt, now)}
-            {feed.refreshError || failed ? " · refresh failed" : ""}
+            · last checked {age(feed.fetchedAt, now)}
+            {feed.refreshError || failed ? " · latest check failed" : ""}
             {ltaNote(overview)}
           </span>
         </span>
@@ -70,8 +70,8 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
       <p className="map-chip map-live">
         <span className="live-dot live-dot-off" aria-hidden="true" />
         <span>
-          <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks had car spaces {age(feed.fetchedAt, now)}
-          <span className="map-chip-meta"> · latest refresh failed{ltaNote(overview)}</span>
+          <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks had car lots available when last checked, {age(feed.fetchedAt, now)}
+          <span className="map-chip-meta"> · latest check failed{ltaNote(overview)}</span>
         </span>
       </p>
     );
@@ -80,10 +80,10 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
     <p className="map-chip map-live">
       <span className="live-dot" aria-hidden="true" />
       <span>
-        <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks have car spaces now
+        <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks have car lots available now
         <span className="map-chip-meta">
           {" "}
-          · {count.format(counts.reporting)} reported in the last 15 min · updated {age(feed.fetchedAt, now)}
+          · {count.format(counts.reporting)} reported in the last 15 min · checked {age(feed.fetchedAt, now)}
           {ltaNote(overview)}
         </span>
       </span>
@@ -93,15 +93,15 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
 
 const LEGEND = [
   ["plenty", "50+"],
-  ["some", "10–49"],
-  ["few", "1–9"],
+  ["some", "10-49"],
+  ["few", "1-9"],
   ["full", "Full"],
   ["unknown", "No recent count"]
 ] as const;
 
 export function MapLegend() {
   return (
-    <ul className="map-chip map-legend" aria-label="Car spaces free">
+    <ul className="map-chip map-legend" aria-label="Car lots available">
       {LEGEND.map(([level, label]) => (
         <li key={level}>
           <span className={`legend-dot legend-${level}`} aria-hidden="true" />

@@ -78,11 +78,11 @@ async function capture() {
     await page.getByRole("button", { name: "Cheapest" }).click();
     await page.locator(".card").first().scrollIntoViewIfNeeded();
     await page.waitForTimeout(500);
-    await page.locator(".card").first().getByText("Rates").click();
+    await page.locator(".card").first().getByText("Rates", { exact: true }).click();
     await page.waitForTimeout(400);
     await page.locator(".card").first().screenshot({ path: join(outDir, "03-card-rates-phone.png") });
 
-    await page.locator(".card").first().getByText("Directions").click();
+    await page.locator(".card").first().getByText("Directions", { exact: true }).click();
     await page.waitForTimeout(400);
     await page.locator(".card").first().screenshot({ path: join(outDir, "04-card-directions-phone.png") });
     const links = await page.locator(".card").first().locator(".directions-menu a").count();
