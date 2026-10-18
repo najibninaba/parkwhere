@@ -8,8 +8,9 @@ export default defineConfig({
     react(),
     cloudflare(),
     VitePWA({
+      // The app registers the service worker itself (src/main.tsx) so it can reload onto a new version.
       registerType: "autoUpdate",
-      injectRegister: "script",
+      injectRegister: false,
       includeAssets: ["favicon.svg", "icons/favicon-32.png", "icons/apple-touch-icon-180.png"],
       manifest: {
         name: "ParkWhere: Singapore parking",
@@ -25,11 +26,25 @@ export default defineConfig({
         ]
       },
       workbox: {
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/health/],
-        // Availability must never come from the service worker cache. urlPattern regexes match the full URL,
-        // so a pathname check is used.
-        runtimeCaching: [{ urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname === "/health", handler: "NetworkOnly" }]
+        // Pages come from the network first, so a deploy shows up on the next visit. The cached copy is
+        // only for offline use. (Serving the page from the precache first kept old versions on screen.)
+        navigateFallback: null,
+        // HTML stays out of the precache: Workbox's precache route runs before runtime routes, so a
+        // precached index.html would still be served cache-first.
+        globPatterns: ["**/*.{js,css,svg,png,webmanifest}"],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
+        runtimeCaching: [
+          // Availability must never come from the service worker cache. urlPattern regexes match the full
+          // URL, so pathname checks are used.
+          { urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname === "/health", handler: "NetworkOnly" },
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: { cacheName: "pages", networkTimeoutSeconds: 4, expiration: { maxEntries: 8 } }
+          }
+        ]
       }
     })
   ]
