@@ -33,7 +33,7 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
           <dd>Open Google Maps, Apple Maps or Waze at the carpark’s mapped location.</dd>
         </div>
       </dl>
-      <p className="hint">Covers HDB carparks, and the mall and URA carparks that report counts to LTA. Mall and URA prices aren’t estimated yet.</p>
+      <p className="hint">Covers HDB carparks, mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap. Only HDB prices are estimated.</p>
     </section>
   );
 }

@@ -246,7 +246,9 @@ describe("Worker routes", () => {
       const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
-      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5);
+      // Five LTA and URA dots are added; the OpenStreetMap carpark 76 m from URA's Beatty Road carpark is
+      // taken to be the same one and left out, so it isn't listed twice.
+      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5 - 1);
       expect(withLta.lta?.state).toBe("live");
       expect(without.lta).toBeNull();
       expect(withLta.counts.reporting).toBe(without.counts.reporting);
@@ -282,6 +284,28 @@ describe("Worker routes", () => {
       const overview = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       expect(overview.lta).toMatchObject({ state: "unavailable", refreshError: "LTA DataMall returned HTTP 503" });
       expect(body.carparks[0].id).toBe("ACB");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("lists public carparks mapped on OpenStreetMap, with no count and no price", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+    try {
+      // Singapore Zoo, as OneMap places it. No HDB carpark is within 2 km.
+      const body = (await (await call("/api/nearby?lat=1.40433&lng=103.79304&radius=500", env())).json()) as NearbyResponse;
+      const zoo = body.carparks.find((carpark) => carpark.id === "osm:way/177625322");
+      expect(zoo).toMatchObject({
+        source: "osm",
+        address: "Wildlife Reserves Singapore carpark",
+        carparkType: "Multi-storey carpark",
+        osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true },
+        car: { reportedBy: null, state: "not-in-feed", available: null }
+      });
+      expect(body.withinRadius).toBeGreaterThanOrEqual(1);
+      const health = (await (await call("/health", env())).json()) as { osmCarparks: number };
+      expect(health.osmCarparks).toBeGreaterThan(200);
     } finally {
       globalThis.fetch = original;
     }

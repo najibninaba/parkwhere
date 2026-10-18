@@ -35,7 +35,7 @@
 
 ## What it does
 
-- **Shows every carpark on a map.** Every HDB carpark, plus the mall and URA carparks that report to LTA. Dots are coloured by how many car lots are available.
+- **Shows every carpark on a map.** Every HDB carpark, the mall and URA carparks that report to LTA, and public carparks mapped on OpenStreetMap, such as the zoo's. Dots are coloured by how many car lots are available.
 - **Says how recent each count is.** HDB counts show when the carpark last reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
 - **Estimates what your stay costs.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate.
 - **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location.
@@ -72,6 +72,11 @@ One Cloudflare Worker serves the web app and a small JSON API:
   - LTA's HDB rows are dropped in favour of data.gov.sg's: all 1,997 matched by carpark number, and data.gov.sg gives times and totals.
   - LTA gives no time and no total, so these counts are shown "as reported", drawn grey and never priced.
 - **Carpark locations and details** come from the [HDB Carpark Information](https://data.gov.sg/datasets/d_23f946fa557947f93a8043bbef41dd09/view) registry, bundled as `worker/registry.json` and converted from SVY21. Refresh it with `pnpm registry`.
+- **Public carparks without counts** come from [OpenStreetMap](https://www.openstreetmap.org/copyright), bundled as `worker/osm-carparks.json`.
+  - Only carparks and entrances tagged as open to the public, customers or with permission are kept. A carpark with no access tag is left out, because it's often a condo or office carpark.
+  - Street parking, HDB-run carparks and anything within 80 m of an HDB, LTA or URA carpark are left out, so no carpark is listed twice.
+  - They have no count and no price. Directions go to a mapped entrance when there is one.
+  - Refresh with `pnpm osm`, which needs [osmium-tool](https://osmcode.org/osmium-tool/) and caches Geofabrik's 250 MB Malaysia, Singapore and Brunei extract in `.cache/osm/`.
 - **Place search and map tiles** come from [OneMap](https://www.onemap.gov.sg/) (Singapore Land Authority). Search needs `ONEMAP_EMAIL` and `ONEMAP_PASSWORD`, and the token is cached in D1.
 - **Prices** follow HDB's [short-term parking charges](https://www.hdb.gov.sg/parking/other-parking-matters/shortterm-parking/shortterm-parking-charges) and MOM's public holidays for 2026 and 2027 (`shared/tariff.ts`, `shared/holidays.ts`).
 
@@ -94,6 +99,7 @@ The app runs without keys. To try OneMap search and mall carparks, put your own 
 | `pnpm media [url]` | Regenerates the screenshots, walkthrough and diagram images in `docs/media` |
 | `pnpm proof <url>` | Captures proof from a deployed build, as CI does for each PR |
 | `pnpm registry` | Refreshes the bundled HDB carpark registry |
+| `pnpm osm [--refresh]` | Refreshes the bundled OpenStreetMap carparks (needs osmium-tool) |
 
 ## Environments and deploys
 
@@ -131,7 +137,7 @@ You can also deploy by hand with `pnpm run deploy:staging` and `pnpm run deploy`
 
 - Prices for mall and URA carparks. LTA's only rates dataset is free text from 2018, and URA's rates API needs a separate URA key.
 - Price estimates for coupon carparks, stays during peak-hour windows, and Central Area rates on weekday public holidays.
-- Carparks that report to neither HDB nor LTA.
+- Carparks that report to neither HDB nor LTA, unless OpenStreetMap tags them as public. Jewel and Singapore Expo, for example, are mapped with no access tag, so they're left out.
 - Walking distances and verified entrances. Distances are in a straight line, and directions go to the registry's mapped point.
 - Public holidays after 2027. Add them to `shared/holidays.ts` when MOM publishes them.
 - Dark mode.
@@ -145,6 +151,8 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 The code is under the [MIT License](LICENSE).
 
 ParkWhere contains information from Carpark Availability and HDB Carpark Information, accessed from data.gov.sg, and from Car Park Availability, accessed from LTA DataMall. All of it is made available under the terms of the [Singapore Open Data Licence version 1.0](https://data.gov.sg/open-data-licence). The fixtures in `fixtures/` are trimmed copies of that data, used for tests.
+
+Public carpark locations are © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). `worker/osm-carparks.json` and `fixtures/osm-parking.sample.json` are derived from OpenStreetMap and are available under the [Open Database Licence 1.0](https://opendatacommons.org/licenses/odbl/1-0/), not the MIT License.
 
 LTA's API terms allow commercial use with attribution and require keys to be kept on the server. ParkWhere keeps its key on the server and keeps only the last minute's copy of the data.
 
