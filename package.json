@@ -12,7 +12,10 @@
     "registry": "node scripts/sync-registry.ts",
     "deploy": "pnpm build && wrangler deploy",
     "check:mobile": "node scripts/mobile-check.ts",
-    "check": "pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "build:staging": "CLOUDFLARE_ENV=staging vite build",
+    "deploy:staging": "pnpm build:staging && wrangler deploy",
+    "proof": "node scripts/pr-proof.ts"
   },
   "dependencies": {
     "effect": "4.0.5",

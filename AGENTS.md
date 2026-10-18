@@ -10,6 +10,8 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 | `pnpm check` | Runs typecheck, tests and the production build. Run this before calling a change done. |
 | `pnpm test` | Vitest: `shared/` logic, `worker/` routes with a node:sqlite D1 stand-in, `src/` UI in jsdom |
 | `pnpm check:mobile [url]` | Emulates 320, 390 and 412 px phones with the installed Chrome. Fails on horizontal overflow or tap targets under 40 px. Writes `screenshots/`. Needs `pnpm dev` running. |
+| `pnpm proof <url> [dir]` | Captures screenshots, a walkthrough video and checks from a deployed build. CI runs this on every PR preview. |
+| `pnpm run deploy:staging` / `pnpm run deploy` | Manual deploys. Normally the `Deploy` workflow does this: main goes to staging, then to production once staging passes. |
 | `pnpm registry` | Refreshes `worker/registry.json` from data.gov.sg. Review the diff, then commit. |
 | `wrangler d1 migrations apply parkwhere-production --local` | Run once before the first `pnpm dev` |
 
@@ -47,6 +49,13 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 - OneMap search needs a token according to its docs. It turns on only when the `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` secrets are set; the token is cached in D1 for 3 days. OneMap tiles need no token but must show the OneMap logo and attribution.
 - Attribution under the Singapore Open Data Licence is in `src/components/Footer.tsx`.
 - LTA DataMall and URA are not integrated. Both need keys the owner has to arrange.
+
+## Environments and pull requests
+
+- Production is the `parkwhere` Worker at parkwhere.bijan.app. Staging is `parkwhere-staging` at parkwhere-staging.bijan.app, with its own D1. PR previews are preview aliases of the staging Worker (`pr-<n>`). See the README.
+- Every PR needs a description following `.github/pull_request_template.md`: what changed, why, a risk assessment with a level, how it was tested, and second opinions. The preview and proof section is filled in by CI.
+- Get second opinions from Astra (`codex exec -m gpt-6-astra -s read-only`) and Fable on plans and on non-trivial changes. Record what they found in the PR.
+- CI never applies D1 migrations. Apply them to staging, then production, before merging a PR that needs them.
 
 ## Conventions
 

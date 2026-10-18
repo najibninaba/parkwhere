@@ -1,0 +1,45 @@
+name: PR description
+
+# Separate from the preview workflow so editing the description never cancels a deploy.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  sections:
+    name: Required sections are filled in
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the description
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const required = ["What changed", "Why", "Risk assessment", "How it was tested"];
+            const { owner, repo } = context.repo;
+            // Read the description now, not from the event, so the latest edit counts.
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: context.payload.pull_request.number });
+            const body = (pull.body ?? "").replace(/<!--[\s\S]*?-->/g, "");
+            const sections = new Map();
+            for (const part of body.split(/^## /m).slice(1)) {
+              const newline = part.indexOf("\n");
+              const title = (newline === -1 ? part : part.slice(0, newline)).trim();
+              sections.set(title, newline === -1 ? "" : part.slice(newline + 1));
+            }
+            // Template prompts left unedited don't count as content.
+            const placeholders = [
+              /^- \*\*Level:\*\* Low \/ Medium \/ High$/,
+              /^- \*\*Data honesty:\*\* Could availability/,
+              /^- \*\*What breaks if this is wrong:\*\*$/,
+              /^- \*\*Infrastructure:\*\* D1 migration, new secret/,
+              /^- \*\*Rollback:\*\* Revert the PR, or/
+            ];
+            const meaningful = (text) => text.split("\n").map((line) => line.trim()).filter((line) => line && !placeholders.some((p) => p.test(line)));
+            const missing = required.filter((title) => !sections.has(title) || meaningful(sections.get(title)).length === 0);
+            if (missing.length) core.setFailed(`Fill in these sections of the PR description: ${missing.join(", ")}. The template is in .github/pull_request_template.md.`);
+            const risk = sections.get("Risk assessment") ?? "";
+            if (!missing.includes("Risk assessment") && !/\*\*Level:\*\*\s*(Low|Medium|High)\b(?!\s*\/)/i.test(risk)) {
+              core.setFailed("Risk assessment needs a level: Low, Medium or High.");
+            }

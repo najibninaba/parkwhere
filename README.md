@@ -36,22 +36,67 @@ Verify with `pnpm check` (typecheck, tests and build). For the phone check, run 
   - Covered: per-minute electronic charging, the 15-minute grace period, Central Area hours, the $5 night cap, the $12/$20 day caps, free parking on Sundays and public holidays, short-term parking hours, and MOM's 2026–2027 public holidays.
   - Where HDB's rules are incomplete, the app shows the published rate and "No estimate" instead of a total. That covers coupon carparks, stays during peak-hour windows, Central Area weekday public holidays, and years whose holidays aren't published yet.
 
-## Deploying
+## Environments and deploys
 
-This is prepared but not done. Each step needs your go-ahead:
+| | Production | Staging | PR previews |
+|---|---|---|---|
+| URL | https://parkwhere.bijan.app | https://parkwhere-staging.bijan.app | `https://pr-<n>-parkwhere-staging.najibninaba.workers.dev` |
+| Worker | `parkwhere` | `parkwhere-staging` | preview versions of `parkwhere-staging` |
+| D1 | `parkwhere-production` | `parkwhere-staging` | staging's |
+| Deployed by | `Deploy` workflow, after staging passes | `Deploy` workflow on every push to `main` | `Preview` workflow on every PR push |
 
-1. `pnpm exec wrangler d1 create parkwhere-production`, then put the returned `database_id` in `wrangler.jsonc`.
-2. `pnpm exec wrangler d1 migrations apply parkwhere-production --remote`
-3. `pnpm run deploy` (`pnpm deploy` is a built-in pnpm command). This creates the Worker `parkwhere` and the custom domain `parkwhere.bijan.app`, which adds a DNS record to the `bijan.app` zone.
+**Pushing to `main`** runs typecheck and tests, then deploys staging and smoke-tests it (API and phone check). Only if that passes does it deploy production and smoke-test that too.
 
-Optional secrets, set with `wrangler secret put <NAME>` and never pasted anywhere else:
+**Every pull request** gets:
+- the typecheck, tests and a staging build
+- a preview URL
+- proof captured from the preview: phone screenshots of the results, rates and directions, a desktop screenshot, a walkthrough GIF and video, and a table of checks (API, overflow at 320 and 390 px, browser errors, directions links)
 
-| Secret | Why |
-|---|---|
-| `ONEMAP_EMAIL`, `ONEMAP_PASSWORD` | Turns on real place search. Register a free OneMap API account at https://www.onemap.gov.sg/apidocs/register. Without it, search only matches HDB carpark addresses, and "Near me" still works. |
-| `DATA_GOV_SG_API_KEY` | Raises data.gov.sg rate limits. Not needed at current traffic. |
+The preview link, images and check table are written into the top of the PR description. Images are kept on the `pr-proof` branch (latest per PR only) and videos in the workflow artifacts for 14 days. A separate check fails the PR if *What changed*, *Why*, *Risk assessment* (with a level) or *How it was tested* is left empty; the template is `.github/pull_request_template.md`.
 
-For local OneMap testing, put the same names in `.dev.vars`, which git ignores.
+How the preview workflow stays safe:
+- **No PR code with the Cloudflare token.** The job that holds the token never checks out or runs code from the PR. It takes only the built JavaScript and static files and deploys them with a Wrangler config it writes itself, pinned to the staging Worker and staging database.
+- **No secrets for the capture job.** The capture job runs the PR's own code (so a UI change is checked by its own capture script) with no secrets and read-only access.
+- **No code in the publish job.** The publish job can write to the repo but runs no repository code; it only copies known image files and the summary.
+- **No secrets for forks.** PRs from forks get no secrets and no preview.
+- **Deploys only from `main`.** The `staging` and `production` GitHub environments accept only `main`.
+
+Previews run the PR's code on the staging Worker, so they can read staging's secrets (for example the OneMap login). That's acceptable while you're the only one pushing branches. If others start opening PRs, give staging its own OneMap account.
+
+### One-time setup: GitHub secrets for Cloudflare
+
+1. **Create the API token.** In the Cloudflare dashboard, open **My Profile → API Tokens → Create Token → Custom token** and name it "ParkWhere GitHub Actions". Give it these permissions:
+   - Account → **Workers Scripts** → Edit
+   - Account → **D1** → Read
+   - Account → **Account Settings** → Read
+   - Zone → **Workers Routes** → Edit
+   - Zone → **Zone** → Read
+
+   Under **Account Resources**, include only *Najibninaba@gmail.com's Account*. Under **Zone Resources**, include only the specific zone **bijan.app**. Optionally set a TTL. Create the token and copy it; Cloudflare shows it once.
+2. **Add the secrets to the repo** from a terminal, not in chat. Each command prompts for the value without echoing it:
+
+   ```sh
+   gh secret set CLOUDFLARE_API_TOKEN --repo najibninaba/parkwhere
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo najibninaba/parkwhere   # b436466d17f13090305cad85ae432f57
+   ```
+
+   You can do the same in GitHub under **Settings → Secrets and variables → Actions → New repository secret**.
+3. **Give staging the app secrets** (optional), so previews and staging use OneMap search too:
+
+   ```sh
+   pnpm exec wrangler secret put ONEMAP_EMAIL --env staging
+   pnpm exec wrangler secret put ONEMAP_PASSWORD --env staging
+   ```
+
+The token can only read D1, so CI never applies migrations. When a PR adds one, apply it before merging:
+- staging: `pnpm exec wrangler d1 migrations apply parkwhere-staging --remote --env staging`
+- production: `pnpm exec wrangler d1 migrations apply parkwhere-production --remote`
+
+**Manual deploys:** `pnpm run deploy:staging` and `pnpm run deploy` (`pnpm deploy` is a built-in pnpm command, so use `run`).
+
+**Rollback:** `pnpm exec wrangler rollback` (add `--env staging` for staging), or revert the PR.
+
+**Worker secrets in production:** `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` (OneMap search), `LTA_DATAMALL_ACCOUNT_KEY` (stored for later; not used yet), and optionally `DATA_GOV_SG_API_KEY`. Set them with `pnpm exec wrangler secret put <NAME>`. For local runs, put them in `.dev.vars`, which git ignores.
 
 ## Not done yet
 
