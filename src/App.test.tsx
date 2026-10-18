@@ -1,0 +1,164 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NearbyCarpark, NearbyResponse } from "../shared/domain";
+import App from "./App";
+
+vi.mock("./components/CarparkMap", () => ({ default: () => <div data-testid="map" /> }));
+
+const base: Omit<NearbyCarpark, "id" | "address" | "distanceM" | "car"> = {
+  lat: 1.3011,
+  lng: 103.8541,
+  carparkType: "MULTI-STOREY CAR PARK",
+  parkingSystem: "ELECTRONIC PARKING",
+  shortTermParking: "WHOLE DAY",
+  freeParking: "NO",
+  nightParking: true,
+  gantryHeightM: 2.15,
+  basement: false
+};
+
+const nowIso = () => new Date(Date.now() - 2 * 60_000).toISOString();
+
+function nearby(overrides: Partial<NearbyResponse> = {}): NearbyResponse {
+  return {
+    query: { lat: 1.3011, lng: 103.8541, radiusM: 500 },
+    feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+    registry: { datasetId: "d_x", name: "HDB Carpark Information", publisher: "HDB", fetchedAt: "2026-10-18T03:57:35Z", count: 2261 },
+    withinRadius: 3,
+    carparks: [
+      { ...base, id: "K1", address: "BLK 1 KNOWN STREET", distanceM: 120, car: { state: "known", available: 42, total: 100, recordedAt: nowIso(), freshness: "current" } },
+      { ...base, id: "U1", address: "BLK 2 UNKNOWN ROAD", distanceM: 260, car: { state: "unknown", available: null, total: null, recordedAt: "2026-08-03T16:00:00Z", freshness: "stale" } },
+      { ...base, id: "N1", address: "BLK 3 NOFEED AVENUE", distanceM: 410, parkingSystem: "COUPON PARKING", car: { state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" } }
+    ],
+    ...overrides
+  };
+}
+
+let nearbyResponse: () => Response;
+
+beforeEach(() => {
+  window.history.replaceState(null, "", "/");
+  nearbyResponse = () => Response.json(nearby());
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/search")) {
+        const other = url.includes("other");
+        return Response.json({
+          query: "x",
+          source: "onemap",
+          results: [other ? { name: "Other Place", address: "9 Other Road", postal: "654321", lat: 1.35, lng: 103.95 } : { name: "Known Street Market", address: "1 Known Street", postal: "123456", lat: 1.3011, lng: 103.8541 }]
+        });
+      }
+      if (url.startsWith("/api/nearby")) return nearbyResponse();
+      return new Response("not found", { status: 404 });
+    })
+  );
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+async function searchAndChoose() {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(screen.getByRole("combobox", { name: /where are you going/i }), "known");
+  await user.click(await screen.findByRole("option", { name: /Known Street Market/ }));
+  return user;
+}
+
+describe("ParkWhere app", () => {
+  it("starts with a clear prompt and no fake results", () => {
+    render(<App />);
+    expect(screen.getByRole("heading", { name: /find hdb parking/i })).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("shows nearby carparks with spaces, their age and a cost estimate", async () => {
+    await searchAndChoose();
+    const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
+    expect(within(card).getByText("42")).toBeInTheDocument();
+    expect(within(card).getByText(/of 100/)).toBeInTheDocument();
+    expect(within(card).getByText(/reported 2 min ago/)).toBeInTheDocument();
+    expect(within(card).getByText(/^\$\d+\.\d\d$/)).toBeInTheDocument();
+    expect(screen.getByText(/HDB data fetched 2 min ago/)).toBeInTheDocument();
+    expect(window.location.search).toContain("name=Known+Street+Market");
+  });
+
+  it("never shows an unknown count as zero", async () => {
+    await searchAndChoose();
+    const unknown = (await screen.findByText("Blk 2 Unknown Road")).closest("li")!;
+    expect(within(unknown).getByText("?")).toBeInTheDocument();
+    expect(within(unknown).queryByText("0")).not.toBeInTheDocument();
+    expect(within(unknown).getByText(/Count unknown/)).toBeInTheDocument();
+    const missing = screen.getByText("Blk 3 Nofeed Avenue").closest("li")!;
+    expect(within(missing).getByText(/No live count/)).toBeInTheDocument();
+    expect(within(missing).getByText("No estimate")).toBeInTheDocument();
+  });
+
+  it("labels last-good data and the failed refresh", async () => {
+    nearbyResponse = () =>
+      Response.json(
+        nearby({ feed: { state: "last-good", fetchedAt: new Date(Date.now() - 14 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() } })
+      );
+    await searchAndChoose();
+    expect(await screen.findByText(/Latest refresh failed \(data.gov.sg returned HTTP 503\)\. Showing the last good HDB data, fetched 14 min ago\./)).toBeInTheDocument();
+  });
+
+  it("explains when live spaces are unavailable but still lists carparks", async () => {
+    nearbyResponse = () => Response.json(nearby({ feed: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "Could not reach data.gov.sg", lastAttemptAt: nowIso() } }));
+    await searchAndChoose();
+    expect(await screen.findByText(/Live spaces are unavailable: Could not reach data.gov.sg/)).toBeInTheDocument();
+    expect(screen.getByText("Blk 1 Known Street")).toBeInTheDocument();
+  });
+
+  it("shows an error with a retry when the API fails", async () => {
+    nearbyResponse = () => Response.json({ error: "Something went wrong on our side." }, { status: 500 });
+    const user = await searchAndChoose();
+    expect(await screen.findByText(/Something went wrong on our side/, { selector: ".banner" })).toBeInTheDocument();
+    nearbyResponse = () => Response.json(nearby());
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByText("Blk 1 Known Street")).toBeInTheDocument();
+  });
+
+  it("never shows one destination's carparks under another", async () => {
+    const user = await searchAndChoose();
+    await screen.findByText("Blk 1 Known Street");
+    nearbyResponse = () => Response.json({ error: "Something went wrong on our side." }, { status: 500 });
+    await user.type(screen.getByRole("combobox", { name: /where are you going/i }), "other");
+    await user.click(await screen.findByRole("option", { name: /Other Place/ }));
+    expect(await screen.findByText(/Something went wrong on our side/, { selector: ".banner" })).toBeInTheDocument();
+    expect(screen.getByText("Other Place")).toBeInTheDocument();
+    expect(screen.queryByText("Blk 1 Known Street")).not.toBeInTheDocument();
+  });
+
+  it("doesn't call an old zero 'full now'", async () => {
+    nearbyResponse = () =>
+      Response.json(
+        nearby({
+          carparks: [{ ...base, id: "S1", address: "BLK 9 OLD ROAD", distanceM: 90, car: { state: "known", available: 0, total: 50, recordedAt: "2026-01-01T00:00:00Z", freshness: "stale" } }]
+        })
+      );
+    await searchAndChoose();
+    const card = (await screen.findByText("Blk 9 Old Road")).closest("li")!;
+    expect(within(card).queryByText(/full now/)).not.toBeInTheDocument();
+    expect(within(card).getByText(/full when last reported/)).toBeInTheDocument();
+  });
+
+  it("opens directions in external map apps", async () => {
+    const user = await searchAndChoose();
+    const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
+    await user.click(within(card).getByText("Directions"));
+    expect(within(card).getByRole("link", { name: "Google Maps" })).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=1.301100,103.854100&travelmode=driving");
+    expect(within(card).getByText(/may not be its entrance/)).toBeInTheDocument();
+  });
+
+  it("re-sorts by most spaces", async () => {
+    const user = await searchAndChoose();
+    await screen.findByText("Blk 1 Known Street");
+    await user.click(screen.getByRole("button", { name: "Most spaces" }));
+    const names = screen.getAllByRole("listitem").filter((item) => item.classList.contains("card")).map((item) => within(item).getByText(/^Blk/).textContent);
+    expect(names[0]).toBe("Blk 1 Known Street");
+  });
+});

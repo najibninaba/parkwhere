@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "lib": [
+      "ES2023"
+    ],
+    "types": [
+      "@cloudflare/workers-types"
+    ]
+  },
+  "include": [
+    "worker",
+    "shared"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "worker/test-d1.ts"
+  ]
+}
