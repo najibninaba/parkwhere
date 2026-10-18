@@ -11,6 +11,12 @@ export default defineConfig({
       // The app registers the service worker itself (src/main.tsx) so it can reload onto a new version.
       registerType: "autoUpdate",
       injectRegister: false,
+      // The service worker is hand-written (sw/sw.ts): its page timeout and precache check aren't
+      // available through the generated one.
+      strategies: "injectManifest",
+      srcDir: "sw",
+      filename: "sw.ts",
+      injectManifest: { globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"] },
       includeAssets: ["favicon.svg", "icons/favicon-32.png", "icons/apple-touch-icon-180.png"],
       manifest: {
         name: "ParkWhere: Singapore parking",
@@ -23,29 +29,6 @@ export default defineConfig({
         icons: [
           { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" }
-        ]
-      },
-      workbox: {
-        // Pages always come from the network, so a deploy shows up on the next visit. When the network
-        // fails (offline), the app shell precached by this same service worker is served instead, so the
-        // page and its JS/CSS always come from one version. Pages are never cached separately: an old
-        // page could outlive the bundles it refers to.
-        navigateFallback: null,
-        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
-        // Without this, "/" would match the precached index.html and be served cache-first.
-        directoryIndex: "__network-only__",
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          // Availability must never come from the service worker cache. urlPattern regexes match the full
-          // URL, so pathname checks are used.
-          { urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname === "/health", handler: "NetworkOnly" },
-          {
-            urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkOnly",
-            options: { precacheFallback: { fallbackURL: "index.html" } }
-          }
         ]
       }
     })

@@ -10,7 +10,8 @@ import { registerSW } from "virtual:pwa-register";
 registerSW({
   immediate: true,
   onRegisteredSW(_url, registration) {
-    if (registration) window.setInterval(() => void registration.update(), 60 * 60_000);
+    // update() rejects when sw.js can't be fetched (offline); the next check tries again.
+    if (registration) window.setInterval(() => registration.update().catch(() => {}), 60 * 60_000);
   }
 });
 
