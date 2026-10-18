@@ -6,7 +6,8 @@ import type { NearbyResponse, OverviewResponse, SearchResponse } from "../shared
 import { getFeed, getLtaFeed, resetFeedMemory } from "./feed";
 import worker, { type Env } from "./index";
 import { createTestD1 } from "./test-d1";
-import { LTA_URL } from "./lta";
+import { Effect } from "effect";
+import { LTA_URL, fetchLta } from "./lta";
 import { AVAILABILITY_URL } from "./upstream";
 
 type Step = { status: number; body?: unknown } | "network-error";
@@ -146,6 +147,23 @@ describe("getLtaFeed", () => {
     expect(seen.map((call) => call.url)).toEqual([`${LTA_URL}?$skip=0`, `${LTA_URL}?$skip=9`]);
     expect(seen.every((call) => call.key === "test-key")).toBe(true);
     expect(read.snapshot?.carparks.map((carpark) => carpark.key)).toEqual(["lta:1", "lta:2", "lta:3", "ura:A0007", "ura:B0031"]);
+  });
+
+  it("gives up cleanly when the whole paged fetch runs past its budget", async () => {
+    const slowPages = vi.fn(async (_input: string, init?: RequestInit) => {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 60);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
+        });
+      });
+      return Response.json({ value: ltaSample.value });
+    });
+    const outcome = await Effect.runPromise(Effect.result(fetchLta(slowPages, "test-key", () => new Date(), 150)));
+    expect(outcome._tag).toBe("Failure");
+    expect(outcome._tag === "Failure" && outcome.failure.message).toMatch(/LTA DataMall (is too slow to respond|did not respond in time)/);
+    expect(slowPages.mock.calls.length).toBeLessThanOrEqual(6);
   });
 
   it("reports a refused key without retrying", async () => {

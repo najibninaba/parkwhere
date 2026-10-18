@@ -54,4 +54,4 @@ export function ltaSentence(lta: FeedStatus, now: number): { tone: "ok" | "warn"
   return { tone: "ok", text: fetched };
 }
 
-export const lotTypeNote = "Counts are car lots free in the whole carpark right now — not a reservation, and not a forecast for when you arrive.";
+export const lotTypeNote = "Counts are car lots free in the whole carpark when it last reported, not a reservation, and not a forecast for when you arrive.";

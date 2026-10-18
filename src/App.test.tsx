@@ -255,6 +255,14 @@ describe("ParkWhere app", () => {
     expect(screen.getByText(/Mall and URA counts from LTA DataMall, fetched 2 min ago/)).toBeInTheDocument();
   });
 
+  it("says when LTA is down even if no mall carparks are listed", async () => {
+    nearbyResponse = () => Response.json(nearby({ lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() } }));
+    await searchAndChoose();
+    expect(await screen.findByText(/Mall and URA counts are unavailable: LTA DataMall returned HTTP 503/, { selector: ".banner" })).toBeInTheDocument();
+    expect(screen.getByText(/when it last reported, not a reservation/)).toBeInTheDocument();
+    expect(screen.queryByText(/right now/)).not.toBeInTheDocument();
+  });
+
   it("opens directions in external map apps", async () => {
     const user = await searchAndChoose();
     const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;

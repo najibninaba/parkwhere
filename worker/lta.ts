@@ -7,17 +7,27 @@ import { UpstreamError, type Fetcher } from "./upstream";
 
 export const LTA_URL = "https://datamall2.mytransport.sg/ltaodataservice/CarParkAvailabilityv2";
 const ATTEMPT_TIMEOUT_MS = 8_000;
+/**
+ * The whole paged fetch, retries included, must finish inside this budget: shorter than the 30 s
+ * refresh claim (CLAIM_MS) and the ~30 s a Worker may keep running after its response, so a slow
+ * LTA fails cleanly and records why instead of being cut off mid-write.
+ */
+export const LTA_BUDGET_MS = 20_000;
 /** Today's feed is about 2,600 rows (6 pages); stop well before a runaway loop. */
 const MAX_PAGES = 12;
 
 const Page = Schema.Struct({ value: Schema.Array(Schema.Unknown) });
 
-const page = (fetcher: Fetcher, accountKey: string, skip: number) =>
+const outOfTime = () => new UpstreamError({ message: "LTA DataMall is too slow to respond", retryable: false });
+
+const page = (fetcher: Fetcher, accountKey: string, skip: number, deadline: number) =>
   Effect.tryPromise({
     try: async () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw outOfTime();
       const response = await fetcher(`${LTA_URL}?$skip=${skip}`, {
         headers: { AccountKey: accountKey, accept: "application/json" },
-        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)
+        signal: AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, remaining))
       });
       if (!response.ok) {
         throw new UpstreamError({
@@ -45,11 +55,12 @@ const page = (fetcher: Fetcher, accountKey: string, skip: number) =>
   );
 
 /** Fetches every page and keeps the LTA and URA car rows. */
-export const fetchLta = (fetcher: Fetcher, accountKey: string, now: () => Date = () => new Date()) =>
+export const fetchLta = (fetcher: Fetcher, accountKey: string, now: () => Date = () => new Date(), budgetMs = LTA_BUDGET_MS) =>
   Effect.gen(function* () {
+    const deadline = Date.now() + budgetMs;
     const rows: LtaRow[] = [];
     for (let index = 0; index < MAX_PAGES; index += 1) {
-      const batch = yield* page(fetcher, accountKey, rows.length);
+      const batch = yield* page(fetcher, accountKey, rows.length, deadline);
       if (batch.length === 0) {
         const snapshot: LtaSnapshot = normaliseLta(rows, now());
         if (snapshot.carparks.length === 0) return yield* Effect.fail(new UpstreamError({ message: "LTA DataMall returned no carparks", retryable: false }));
