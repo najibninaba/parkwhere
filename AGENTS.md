@@ -12,6 +12,7 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 | `pnpm check:mobile [url]` | Emulates 320, 390 and 412 px phones with the installed Chrome. Fails on horizontal overflow or tap targets under 40 px. Writes `screenshots/`. Needs `pnpm dev` running. |
 | `pnpm proof <url> [dir]` | Captures screenshots, a walkthrough video and checks from a deployed build. CI runs this on every PR preview. |
 | `pnpm run deploy:staging` / `pnpm run deploy` | Manual deploys. Normally the `Deploy` workflow does this: main goes to staging, then to production once staging passes. |
+| `pnpm media [url]` | Regenerates the README screenshots, walkthrough and diagram images in `docs/media`. Needs a running app. |
 | `pnpm registry` | Refreshes `worker/registry.json` from data.gov.sg. Review the diff, then commit. |
 | `wrangler d1 migrations apply parkwhere-production --local` | Run once before the first `pnpm dev` |
 
@@ -41,7 +42,7 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 2. Three times are kept separate: `fetchedAt` (when we received the response), `feedTimestamp` (the feed's own time) and each record's `recordedAt`. A fresh response can carry year-old records.
 3. The feed splits some carparks into several records by lot type. Key data by (carpark id, lot type), let the newest record win, and never add records together. Car counts use lot type `C` only.
 4. Refresh failures and last-good data are always labelled (`feed.state`, `feed.refreshError`).
-5. Counts describe the whole carpark right now. They are not a reservation, not a single bay and not a forecast.
+5. A count describes the whole carpark when it last reported. It doesn't reserve a lot, describe a single bay or predict the future.
 6. Registry coordinates are not entrances. Navigation goes to Google Maps, Apple Maps or Waze with that caveat. Don't build turn-by-turn guidance.
 7. Cost estimates come only from rules HDB publishes (see the header of `shared/tariff.ts`). When a rule is missing or ambiguous (coupon carparks, peak windows, Central Area rates on public holidays, unpublished holiday years), return `unavailable` with the published rate.
 8. Don't add accounts, payments, bookings, AI, predictions, entrance photos or manual walking routes.
@@ -52,13 +53,12 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 - data.gov.sg HDB availability (v1 real-time) needs no key. The optional `DATA_GOV_SG_API_KEY` secret raises rate limits. The refresh claim keeps upstream calls to about one a minute.
 - OneMap search needs a token according to its docs. It turns on only when the `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` secrets are set; the token is cached in D1 for 3 days. OneMap tiles need no token but must show the OneMap logo and attribution.
 - Attribution under the Singapore Open Data Licence is in `src/components/Footer.tsx`.
-- LTA DataMall and URA are not integrated. Both need keys the owner has to arrange.
+- LTA DataMall (`LTA_DATAMALL_ACCOUNT_KEY`) adds mall and URA carparks. Without the key they're left out, and nothing else changes. URA's own API (rates) isn't integrated: it needs a separate URA access key.
 
 ## Environments and pull requests
 
 - Production is the `parkwhere` Worker at parkwhere.bijan.app. Staging is `parkwhere-staging` at parkwhere-staging.bijan.app, with its own D1. PR previews are preview aliases of the staging Worker (`pr-<n>`). See the README.
-- Every PR needs a description following `.github/pull_request_template.md`: what changed, why, a risk assessment with a level, how it was tested, and second opinions. The preview and proof section is filled in by CI.
-- Get second opinions from Astra (`codex exec -m gpt-6-astra -s read-only`) and Fable on plans and on non-trivial changes. Record what they found in the PR.
+- Every PR needs a description following `.github/pull_request_template.md`: what changed, why, a risk assessment with a level and how it was tested. Record any independent reviews under "Second opinions". CI fills in the preview and proof section.
 - CI never applies D1 migrations. Apply them to staging, then production, before merging a PR that needs them.
 
 ## Conventions
@@ -66,4 +66,13 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 - Keep pinned dependency versions. Effect 4 and TypeScript 7 are in use; check the API against `node_modules/effect/dist/*.d.ts` rather than memory.
 - Don't commit secrets. Local secrets go in `.dev.vars`, which git ignores.
 - Ask the owner before deploying, creating Cloudflare resources or credentials, or changing DNS or routes.
-- Visual and design work is reviewed in MagicPath (project "zestily-park-9281", id 462419314847395840).
+- Follow [DESIGN.md](DESIGN.md) for anything visual. Regenerate README images with `pnpm media` after visible changes.
+
+## Copy
+
+The app's text is plain, specific and calm. It should read like a notice, not a pitch.
+
+- Terms: "car lots available" (not "spaces" or "free lots", which could mean free parking). A carpark **reports** a count; ParkWhere **checks** the feed. Say "count", not "data", in the UI.
+- Every claim about a count says when it's from. Never write "now" about a count older than 15 minutes or one with no time.
+- Short sentences, everyday words, Singapore English. No em dashes, no hype or self-praise ("honest", "seamless"), and no "not X, but Y" framing.
+- Errors say what failed and what still works ("HDB counts are unavailable. Carparks and prices are still shown.").
