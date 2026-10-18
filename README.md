@@ -89,10 +89,12 @@ Previews run the PR's code on the staging Worker, so they can read staging's sec
 3. **Give staging the app secrets** (optional), so previews and staging use OneMap search and LTA carparks too:
 
    ```sh
-   pnpm exec wrangler secret put ONEMAP_EMAIL --env staging
-   pnpm exec wrangler secret put ONEMAP_PASSWORD --env staging
-   pnpm exec wrangler secret put LTA_DATAMALL_ACCOUNT_KEY --env staging
+   pnpm exec wrangler versions secret put ONEMAP_EMAIL --env staging
+   pnpm exec wrangler versions secret put ONEMAP_PASSWORD --env staging
+   pnpm exec wrangler versions secret put LTA_DATAMALL_ACCOUNT_KEY --env staging
    ```
+
+   Use `versions secret put` for staging. PR previews upload versions of the staging Worker without deploying them, so its latest version is usually not the deployed one, and plain `secret put` refuses to run. The secret is stored on a new, undeployed version. Later uploads (PR previews, and the next staging deploy from `main`) inherit it.
 
 The token can only read D1, so CI never applies migrations. When a PR adds one, apply it before merging:
 - staging: `pnpm exec wrangler d1 migrations apply parkwhere-staging --remote --env staging`
