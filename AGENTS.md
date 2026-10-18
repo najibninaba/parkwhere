@@ -71,7 +71,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 
 ## Conventions
 
-- Keep pinned dependency versions. Effect 4 and TypeScript 7 are in use; check the API against `node_modules/effect/dist/*.d.ts` rather than memory.
+- Keep pinned dependency versions, and update them by hand as described in CONTRIBUTING.md ("Updating dependencies"). Effect 4 and TypeScript 7 are in use; check the API against `node_modules/effect/dist/*.d.ts` rather than memory.
 - Don't commit secrets. Local secrets go in `.dev.vars`, which git ignores.
 - Ask the owner before deploying, creating Cloudflare resources or credentials, or changing DNS or routes.
 - Follow [DESIGN.md](DESIGN.md) for anything visual. Regenerate README images with `pnpm media` after visible changes.
