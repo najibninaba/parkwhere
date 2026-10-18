@@ -474,8 +474,8 @@ p, dd { text-wrap: pretty; }
 .card-name { font-weight: 600; font-size: 16px; line-height: 1.3; }
 .card-sub { font-size: 13px; color: var(--ink-mute); }
 .card-figures { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--paper-deep); }
-.spaces, .cost { display: flex; gap: 8px; align-items: center; padding: 10px 12px; min-width: 0; }
-.cost { border-left: 1px solid var(--paper-deep); flex-direction: column; align-items: flex-start; gap: 0; }
+.spaces, .cost { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 12px; min-width: 0; }
+.cost { border-left: 1px solid var(--paper-deep); gap: 0; }
 .spaces-count, .cost-total {
   font-family: var(--font-display);
   font-weight: 800;
@@ -485,7 +485,8 @@ p, dd { text-wrap: pretty; }
   line-height: 1;
   letter-spacing: -0.02em;
 }
-.spaces-count { min-width: 2ch; padding: 4px 6px; color: #fff; background: var(--unknown); text-align: center; }
+/* Never shrinks below its digits: counts can be 1 to 4 digits (malls report 900+). */
+.spaces-count { flex: none; min-width: 2ch; padding: 4px 6px; color: #fff; background: var(--unknown); text-align: center; white-space: nowrap; }
 .spaces-plenty .spaces-count { background: var(--plenty); }
 .spaces-some .spaces-count { background: var(--some); }
 .spaces-few .spaces-count { background: var(--few); color: var(--ink); }

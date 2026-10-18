@@ -30,6 +30,10 @@ async function api() {
 const noOverflow = async (page: Page, label: string) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(`No horizontal overflow (${label})`, overflow <= 0, overflow > 0 ? `${overflow}px wider than the screen` : "fits");
+  const clipped = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".spaces-count, .cost-total")].filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent?.trim() ?? "")
+  );
+  check(`No numbers cut off (${label})`, clipped.length === 0, clipped.length ? clipped.join(", ") : "none");
 };
 
 await rm(outDir, { recursive: true, force: true });

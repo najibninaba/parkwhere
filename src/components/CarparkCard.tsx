@@ -36,12 +36,18 @@ function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
     );
   }
   const current = isCurrent(car, now);
-  const label = current ? (car.available === 0 ? "full now" : "car lots free") : car.available === 0 ? "full when last reported" : "car lots free when last reported";
+  const label = current
+    ? car.available === 0
+      ? `full now, ${car.total} lots`
+      : `car lots free of ${car.total}`
+    : car.available === 0
+      ? `full when last reported, ${car.total} lots`
+      : `car lots free of ${car.total}, when last reported`;
   return (
     <div className={`spaces spaces-${level}`}>
       <span className="spaces-count">{car.available}</span>
       <span className="spaces-meta">
-        {label} of {car.total}
+        {label}
         <br />
         <span className={current ? undefined : "stale"} title={clock(car.recordedAt)}>
           {current ? "" : "⚠ "}reported {age(car.recordedAt, now)}
