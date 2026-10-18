@@ -73,7 +73,7 @@ const LEGEND = [
   ["some", "10–49"],
   ["few", "1–9"],
   ["full", "Full"],
-  ["unknown", "No count"]
+  ["unknown", "No recent count"]
 ] as const;
 
 export function MapLegend() {

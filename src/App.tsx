@@ -72,9 +72,16 @@ export default function App() {
 
   // Every carpark for the map, refreshed while the page is visible. A failure is shown, and old
   // colours expire (see overviewIsCurrent) rather than staying "live" forever.
+  // Polled only on the landing page, where the dots are the point; one request at a time; refetched as
+  // soon as the tab is visible again.
+  const landing = destination === null;
   useEffect(() => {
+    if (!landing) return;
     const controller = new AbortController();
-    const run = () =>
+    let inFlight = false;
+    const run = () => {
+      if (inFlight) return;
+      inFlight = true;
       fetchOverview(controller.signal)
         .then((data) => {
           setOverview(data);
@@ -82,16 +89,25 @@ export default function App() {
         })
         .catch((error: unknown) => {
           if (!(error instanceof DOMException && error.name === "AbortError")) setOverviewFailed(true);
+        })
+        .finally(() => {
+          inFlight = false;
         });
+    };
     run();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") run();
     }, REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       controller.abort();
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [landing]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -189,7 +205,7 @@ export default function App() {
     setSelectedId(null);
     moveFocus.current = true;
     setDestination(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
 
   const feed = data ? feedSentence(data.feed, now) : null;
@@ -200,30 +216,13 @@ export default function App() {
     <div className="app">
       <Header />
       <main className={`shell ${destination ? "shell-results" : "shell-landing"}`}>
-        <div className="map-pane">
-          <Suspense fallback={<div className="map-frame"><div className="map-skeleton" aria-hidden="true"><span>Loading map…</span></div></div>}>
-            <ParkMap
-              overview={overview?.points ?? null}
-              overviewCurrent={overviewIsCurrent(overview, now)}
-              destination={destination}
-              carparks={sortedCarparks}
-              radiusM={data?.query.radiusM ?? radiusM}
-              selectedId={selectedId}
-              onSelect={select}
-              onSearchArea={(center) => choose({ name: "Map area", ...center })}
-            />
-          </Suspense>
-          {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}
-          <MapLegend />
-        </div>
-
         <div className="panel">
           {!destination && (
             <div className="hero">
               <h1 ref={hero} tabIndex={-1}>
                 Park near where you’re going.
               </h1>
-              <p>Live HDB car spaces, how fresh each count is, and what your stay will cost, before you arrive.</p>
+              <p>Live HDB car spaces, how fresh each count is, and what your stay should cost, before you arrive.</p>
             </div>
           )}
           <SearchBox destination={destination} onChoose={choose} prominent={!destination} />
@@ -307,6 +306,22 @@ export default function App() {
               )}
             </div>
           )}
+        </div>
+        <div className="map-pane">
+          <Suspense fallback={<div className="map-frame"><div className="map-skeleton" aria-hidden="true"><span>Loading map…</span></div></div>}>
+            <ParkMap
+              overview={overview?.points ?? null}
+              overviewCurrent={overviewIsCurrent(overview, now)}
+              destination={destination}
+              carparks={sortedCarparks}
+              radiusM={data?.query.radiusM ?? radiusM}
+              selectedId={selectedId}
+              onSelect={select}
+              onSearchArea={(center) => choose({ name: "Map area", ...center })}
+            />
+          </Suspense>
+          {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}
+          <MapLegend />
         </div>
       </main>
       <Footer registryFetchedAt={data?.registry.fetchedAt ?? null} />

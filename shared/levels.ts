@@ -8,21 +8,21 @@ export const isCurrent = (car: CarAvailability, now: number) => recordFreshness(
 
 /**
  * Colour level for a car count. Thresholds only drive colour; the number is always shown where there is room.
- * Unknown, missing and stale counts are all "unknown", never "full".
+ * Unknown, missing, delayed and stale counts are all "unknown", never "full".
  */
 export function spaceLevel(car: CarAvailability, now: number = Date.now()): SpaceLevel {
   if (car.state !== "known" || car.available === null) return "unknown";
-  const freshness = recordFreshness(car.recordedAt, new Date(now));
-  // A count with no time, or one over an hour old, can't be coloured as if it were current.
-  if (freshness === "stale" || freshness === "unknown") return "unknown";
+  // Only counts recorded in the last 15 minutes are coloured. Older or undated counts keep their number
+  // but are drawn grey, with their age beside them, so nothing old looks current.
+  if (recordFreshness(car.recordedAt, new Date(now)) !== "current") return "unknown";
   if (car.available === 0) return "full";
   if (car.available < 10) return "few";
   if (car.available < 50) return "some";
   return "plenty";
 }
 
-/** Stricter level for the island overview, which has no room to show each count's age: current counts only. */
-export const overviewLevel = (car: CarAvailability, now: number): SpaceLevel => (isCurrent(car, now) ? spaceLevel(car, now) : "unknown");
+/** The island overview uses the same rule as cards and pins. */
+export const overviewLevel = spaceLevel;
 
 /** Compact codes for the overview map payload. */
 export const LEVEL_CODES: readonly SpaceLevel[] = ["unknown", "full", "few", "some", "plenty"];

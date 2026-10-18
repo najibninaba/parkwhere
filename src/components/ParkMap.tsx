@@ -92,22 +92,25 @@ export default function ParkMap({ overview, overviewCurrent, destination, carpar
     };
   }, []);
 
-  // Every carpark as a dot. Faded once a destination is chosen, so the numbered results stand out.
+  // Every carpark as a dot, built once per overview payload and restyled in place on zoom, fade and
+  // expiry, so ~2,100 layers aren't recreated each time.
+  const dotLayers = useRef<{ marker: L.CircleMarker; code: number }[]>([]);
   useEffect(() => {
     const group = dots.current;
     if (!group) return;
     group.clearLayers();
-    if (!overview) return;
+    dotLayers.current = (overview ?? []).map(([lat, lng, code]) => ({
+      marker: L.circleMarker([lat, lng], { stroke: false, interactive: false }).addTo(group),
+      code
+    }));
+  }, [overview]);
+  useEffect(() => {
     const faded = destination !== null;
-    for (const [lat, lng, code] of overview) {
+    const radius = dotRadius(zoom, faded);
+    for (const { marker, code } of dotLayers.current) {
       const level = overviewCurrent ? (LEVEL_CODES[code] ?? "unknown") : "unknown";
-      L.circleMarker([lat, lng], {
-        radius: dotRadius(zoom, faded),
-        stroke: false,
-        fillColor: LEVEL_COLOURS[level],
-        fillOpacity: faded ? 0.35 : 0.9,
-        interactive: false
-      }).addTo(group);
+      marker.setRadius(radius);
+      marker.setStyle({ fillColor: LEVEL_COLOURS[level], fillOpacity: faded ? 0.35 : 0.9 });
     }
   }, [overview, overviewCurrent, destination, zoom]);
 
@@ -139,7 +142,8 @@ export default function ParkMap({ overview, overviewCurrent, destination, carpar
       keyboard: false
     }).addTo(group);
     for (const carpark of carparks) {
-      const marker = L.marker([carpark.lat, carpark.lng], { title: carpark.address, riseOnHover: true })
+      // The cards are the keyboard and screen-reader path; pins stay out of the tab order.
+      const marker = L.marker([carpark.lat, carpark.lng], { title: carpark.address, riseOnHover: true, keyboard: false })
         .on("click", () => selectRef.current(carpark.id))
         .addTo(group);
       markers.current.set(carpark.id, marker);

@@ -67,9 +67,8 @@ p, dd { text-wrap: pretty; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  height: var(--header-h);
-  padding: 0 16px;
-  padding-top: env(safe-area-inset-top);
+  min-height: calc(var(--header-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 16px 0;
   background: var(--ink);
   color: var(--paper);
   position: sticky;
@@ -89,8 +88,13 @@ p, dd { text-wrap: pretty; }
 .header-note { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.8; }
 
 /* Shell: map on top on phones, map beside a floating panel on wide screens */
-.shell { position: relative; }
+.shell { position: relative; display: flex; flex-direction: column; }
+/* The panel comes first in the DOM (keyboard and screen readers reach search first); the map is shown first. */
+.map-pane { order: -1; }
 .map-pane { position: relative; height: 52svh; min-height: 300px; }
+@media (max-height: 640px) {
+  .map-pane { height: 40svh; min-height: 220px; }
+}
 .shell-results .map-pane { height: 40svh; min-height: 260px; }
 .panel {
   position: relative;
@@ -115,7 +119,7 @@ p, dd { text-wrap: pretty; }
 }
 
 @media (min-width: 900px) {
-  .shell { height: calc(100svh - var(--header-h)); min-height: 620px; }
+  .shell { display: block; height: calc(100svh - var(--header-h)); min-height: 620px; }
   .map-pane, .shell-results .map-pane { position: absolute; inset: 0; height: auto; }
   .panel {
     position: absolute;
@@ -144,6 +148,7 @@ p, dd { text-wrap: pretty; }
   position: absolute;
   inset: 0;
   z-index: 1;
+  pointer-events: none;
   display: grid;
   place-items: center;
   background-color: #e4e9e3;
@@ -228,7 +233,7 @@ p, dd { text-wrap: pretty; }
   position: absolute;
   z-index: 450;
   left: 50%;
-  top: 64px;
+  bottom: 96px;
   transform: translateX(-50%);
   box-shadow: var(--shadow-float);
   background: var(--white);
@@ -439,11 +444,7 @@ p, dd { text-wrap: pretty; }
   display: flex;
   flex-direction: column;
   transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
-  animation: rise 260ms var(--ease-out) both;
 }
-.list > .card:nth-child(2) { animation-delay: 40ms; }
-.list > .card:nth-child(3) { animation-delay: 80ms; }
-.list > .card:nth-child(n + 4) { animation-delay: 120ms; }
 .card-selected { border-color: var(--bay); box-shadow: 0 0 0 2px var(--bay), var(--shadow-float); }
 .card-main {
   display: flex;
@@ -502,7 +503,7 @@ p, dd { text-wrap: pretty; }
 .rate-body p { font-size: 14px; }
 
 /* Skeleton cards */
-.card-skeleton { gap: 10px; padding: 14px 12px; border-color: var(--paper-line); animation: none; }
+.card-skeleton { gap: 10px; padding: 14px 12px; border-color: var(--paper-line); }
 .skeleton-line, .skeleton-block { display: block; position: relative; overflow: hidden; background: var(--paper-deep); }
 .skeleton-title { height: 16px; width: 72%; }
 .skeleton-sub { height: 12px; width: 46%; }
@@ -553,7 +554,6 @@ p, dd { text-wrap: pretty; }
 @keyframes sheen { to { transform: translateX(100%); } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pulse { 50% { opacity: 0.35; } }
-@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 
 @media (max-width: 420px) {
   .header-note { display: none; }
