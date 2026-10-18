@@ -15,7 +15,7 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
   return (
     <footer className="footer" aria-label="Sources and project">
       <div className="footer-meta">
-        <span>data.gov.sg · LTA · OneMap</span>
+        <span>data.gov.sg · LTA · OneMap · OpenStreetMap</span>
         <Signature />
         <span>© 2026 Najib Ninaba</span>
       </div>
@@ -34,6 +34,10 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
       </p>
       <p>
         Prices follow <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a> and {HOLIDAYS_SOURCE}. Estimates assume one continuous stay in a regular (non-season) lot; the charge at the gantry is what counts.
+      </p>
+      <p>
+        Public carparks without counts are from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>, available under the{" "}
+        <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Database Licence</a>.
       </p>
       <p>Maps © OneMap contributors, Singapore Land Authority.</p>
       <p>ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.</p>

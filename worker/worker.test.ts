@@ -246,7 +246,10 @@ describe("Worker routes", () => {
       const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
-      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5);
+      // Five LTA and URA dots are added. OpenStreetMap carparks that duplicate them are left out, so the
+      // total grows by at most five.
+      expect(withLta.counts.carparks).toBeGreaterThan(without.counts.carparks);
+      expect(withLta.counts.carparks).toBeLessThanOrEqual(without.counts.carparks + 5);
       expect(withLta.lta?.state).toBe("live");
       expect(without.lta).toBeNull();
       expect(withLta.counts.reporting).toBe(without.counts.reporting);
@@ -268,6 +271,8 @@ describe("Worker routes", () => {
       const body = (await (await call("/api/nearby?lat=1.29375&lng=103.85718&radius=500", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
       const suntec = body.carparks.find((carpark) => carpark.id === "lta:1");
       expect(suntec).toMatchObject({ source: "lta", address: "Suntec City", car: { reportedBy: "LTA", available: 967, total: null, recordedAt: null } });
+      // OpenStreetMap also maps Suntec City, 89 m away; it's the same carpark, so it isn't listed again without a count.
+      expect(body.carparks.filter((carpark) => /suntec city/i.test(carpark.address))).toHaveLength(1);
       expect(body.lta?.state).toBe("live");
     } finally {
       globalThis.fetch = original;
@@ -282,6 +287,28 @@ describe("Worker routes", () => {
       const overview = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       expect(overview.lta).toMatchObject({ state: "unavailable", refreshError: "LTA DataMall returned HTTP 503" });
       expect(body.carparks[0].id).toBe("ACB");
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("lists public carparks mapped on OpenStreetMap, with no count and no price", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+    try {
+      // Singapore Zoo, as OneMap places it. No HDB carpark is within 2 km.
+      const body = (await (await call("/api/nearby?lat=1.40433&lng=103.79304&radius=500", env())).json()) as NearbyResponse;
+      const zoo = body.carparks.find((carpark) => carpark.id === "osm:way/177625322");
+      expect(zoo).toMatchObject({
+        source: "osm",
+        address: "Wildlife Reserves Singapore carpark",
+        carparkType: "Multi-storey carpark",
+        osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true, named: false },
+        car: { reportedBy: null, state: "not-in-feed", available: null }
+      });
+      expect(body.withinRadius).toBeGreaterThanOrEqual(1);
+      const health = (await (await call("/health", env())).json()) as { osmCarparks: number };
+      expect(health.osmCarparks).toBeGreaterThan(200);
     } finally {
       globalThis.fetch = original;
     }

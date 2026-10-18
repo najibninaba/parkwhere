@@ -28,7 +28,7 @@
     <div class="diagram-container">
       <svg id="diagram" viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
         <title id="architecture-title">How ParkWhere gets its data</title>
-        <desc id="architecture-desc">Public carpark feeds from data.gov.sg and LTA DataMall, and OneMap search, go through one Cloudflare Worker that keeps the last good counts in D1 and serves a JSON API to the ParkWhere web app, which hands directions to the driver's map app.</desc>
+        <desc id="architecture-desc">Public carpark feeds from data.gov.sg and LTA DataMall, bundled lists of HDB carparks and public carparks mapped on OpenStreetMap, and OneMap search, go through one Cloudflare Worker that keeps the last good counts in D1 and serves a JSON API to the ParkWhere web app, which hands directions to the driver's map app.</desc>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5c5850"/></marker>
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1f47c4"/></marker>
@@ -111,8 +111,8 @@
         <rect x="380" y="96" width="200" height="64" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
         <rect x="388" y="102" width="36" height="12" rx="2" fill="transparent" stroke="rgba(21,20,18,0.35)" stroke-width="0.8"/>
         <text x="406" y="111" fill="#5c5850" font-size="7" font-family="IBM Plex Mono, monospace" font-weight="600" text-anchor="middle" letter-spacing="0.08em">DATA</text>
-        <text x="480" y="134" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">HDB carpark registry</text>
-        <text x="480" y="150" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">registry.json · SVY21 to WGS84</text>
+        <text x="480" y="134" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Bundled carpark lists</text>
+        <text x="480" y="150" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">HDB · OpenStreetMap</text>
         <!-- Worker (focal) -->
         <rect x="380" y="220" width="200" height="104" rx="6" fill="#f5f0e5"/>
         <rect x="380" y="220" width="200" height="104" rx="6" fill="#e6ebf7" stroke="#1f47c4" stroke-width="1.4"/>

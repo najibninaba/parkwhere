@@ -6,7 +6,7 @@ body:
     id: carpark
     attributes:
       label: Carpark
-      description: The name and code on the card, e.g. "Blk 270/271 Albert Centre Basement Car Park (ACB)".
+      description: The name on the card, and its code for HDB carparks, e.g. "Blk 270/271 Albert Centre Basement Car Park (ACB)".
     validations:
       required: true
   - type: dropdown
@@ -31,4 +31,4 @@ body:
   - type: markdown
     attributes:
       value: |
-        Counts come from HDB (data.gov.sg) and LTA DataMall, and prices from HDB's published rates. If the source data is wrong, we may not be able to fix it here, but a report still helps.
+        Counts come from HDB (data.gov.sg) and LTA DataMall, and prices from HDB's published rates. Carparks tagged "Mapped on OpenStreetMap" come from OpenStreetMap, which anyone can correct at openstreetmap.org; ParkWhere picks up fixes when it next refreshes. If the source data is wrong, we may not be able to fix it here, but a report still helps.

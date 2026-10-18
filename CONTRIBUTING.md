@@ -18,6 +18,8 @@ pnpm exec wrangler d1 migrations apply parkwhere-production --local
 pnpm dev
 ```
 
+To refresh the OpenStreetMap carparks with `pnpm osm`, you also need osmium-tool (`brew install osmium-tool` on macOS). The first run downloads a 250 MB extract into `.cache/osm/`.
+
 The app runs without any keys. Place search falls back to HDB carpark addresses, and mall and URA carparks are left out. To try those features locally, put your own `ONEMAP_EMAIL`, `ONEMAP_PASSWORD` and `LTA_DATAMALL_ACCOUNT_KEY` in `.dev.vars`, which git ignores. Never commit keys.
 
 ## Make a change

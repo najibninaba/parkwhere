@@ -1,10 +1,12 @@
 import { carAvailability, feedStatus } from "../shared/availability";
-import type { CarAvailability, NearbyResponse, OverviewResponse, RegistryCarpark, RegistryFile } from "../shared/domain";
+import type { CarAvailability, NearbyResponse, OsmFile, OverviewResponse, RegistryCarpark, RegistryFile } from "../shared/domain";
 import { levelCode, overviewLevel } from "../shared/levels";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore, nearbyCarparks } from "../shared/nearby";
 import { LOADING_BAYS } from "../shared/tariff";
 import { getFeed, getLtaFeed, type FeedEnv, type FeedRead, type LtaRead } from "./feed";
 import { ltaAvailability, ltaRegistry } from "../shared/lta";
+import { OSM_AVAILABILITY, osmRegistry, withoutDuplicates } from "../shared/osm";
+import osmFile from "./osm-carparks.json";
 import registryFile from "./registry.json";
 import { SearchUnavailable, onemapConfigured, search, type SearchEnv } from "./search";
 
@@ -16,6 +18,15 @@ export interface Env extends FeedEnv, SearchEnv {
 const registry = registryFile as RegistryFile;
 /** Visitor carparks only: loading/unloading bays are left out. */
 const carparks = registry.carparks.filter((carpark) => !LOADING_BAYS.has(carpark.id));
+/** Public carparks mapped on OpenStreetMap (no counts, no prices). scripts/sync-osm.ts already left out HDB duplicates. */
+const osmCarparks = withoutDuplicates(osmRegistry(osmFile as OsmFile), carparks);
+
+/** OpenStreetMap carparks minus any that duplicate an LTA or URA carpark, worked out once per LTA snapshot. */
+let osmForLta: { fetchedAt: string | null; carparks: RegistryCarpark[] } | null = null;
+function osmWithout(lta: RegistryCarpark[], fetchedAt: string | null): RegistryCarpark[] {
+  if (osmForLta?.fetchedAt !== fetchedAt) osmForLta = { fetchedAt, carparks: withoutDuplicates(osmCarparks, lta) };
+  return osmForLta.carparks;
+}
 
 const json = (body: unknown, status = 200, cache = "no-store") =>
   new Response(JSON.stringify(body), {
@@ -32,8 +43,8 @@ const storeDown = (label: string) => (error: unknown) => {
 
 /**
  * Both feeds, read in parallel. A failing store or feed never takes the other down. The result lists
- * HDB carparks from the registry plus LTA/URA carparks from LTA's last good snapshot, each with
- * availability looked up in its own source.
+ * HDB carparks from the registry, LTA/URA carparks from LTA's last good snapshot and public carparks mapped
+ * on OpenStreetMap, each with availability looked up in its own source (OpenStreetMap has none).
  */
 async function readFeeds(env: Env, ctx: ExecutionContext, now: Date) {
   const waitUntil = (promise: Promise<unknown>) => ctx.waitUntil(promise);
@@ -41,9 +52,14 @@ async function readFeeds(env: Env, ctx: ExecutionContext, now: Date) {
     getFeed(env, waitUntil).catch(storeDown("HDB")) as Promise<FeedRead>,
     getLtaFeed(env, waitUntil)?.catch(storeDown("LTA")) as Promise<LtaRead> | undefined
   ]);
-  const all: RegistryCarpark[] = lta ? [...carparks, ...ltaRegistry(lta.snapshot)] : carparks;
-  const availabilityOf = (carpark: RegistryCarpark): CarAvailability =>
-    (carpark.source ?? "hdb") === "hdb" ? carAvailability(hdb.snapshot, carpark.id, now) : ltaAvailability(lta?.snapshot ?? null, carpark.id);
+  const ltaCarparks = lta ? ltaRegistry(lta.snapshot) : [];
+  const all: RegistryCarpark[] = [...carparks, ...ltaCarparks, ...osmWithout(ltaCarparks, lta?.snapshot?.fetchedAt ?? null)];
+  const availabilityOf = (carpark: RegistryCarpark): CarAvailability => {
+    const source = carpark.source ?? "hdb";
+    if (source === "hdb") return carAvailability(hdb.snapshot, carpark.id, now);
+    if (source === "osm") return OSM_AVAILABILITY;
+    return ltaAvailability(lta?.snapshot ?? null, carpark.id);
+  };
   return {
     all,
     availabilityOf,
@@ -129,6 +145,8 @@ async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
       feed: status,
       lta: lta ? feedStatus(lta.snapshot, lta.status, now) : "not configured",
       registryFetchedAt: registry.source.fetchedAt,
+      osmCarparks: osmCarparks.length,
+      osmDataAt: (osmFile as OsmFile).source.dataAt,
       placeSearch: onemapConfigured(env) ? "onemap" : "hdb-registry"
     },
     status.state === "live" ? 200 : 503
