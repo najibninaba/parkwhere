@@ -26,12 +26,14 @@ export default defineConfig({
         ]
       },
       workbox: {
-        // Pages come from the network first, so a deploy shows up on the next visit. The cached copy is
-        // only for offline use. (Serving the page from the precache first kept old versions on screen.)
+        // Pages always come from the network, so a deploy shows up on the next visit. When the network
+        // fails (offline), the app shell precached by this same service worker is served instead, so the
+        // page and its JS/CSS always come from one version. Pages are never cached separately: an old
+        // page could outlive the bundles it refers to.
         navigateFallback: null,
-        // HTML stays out of the precache: Workbox's precache route runs before runtime routes, so a
-        // precached index.html would still be served cache-first.
-        globPatterns: ["**/*.{js,css,svg,png,webmanifest}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
+        // Without this, "/" would match the precached index.html and be served cache-first.
+        directoryIndex: "__network-only__",
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
@@ -41,8 +43,8 @@ export default defineConfig({
           { urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname === "/health", handler: "NetworkOnly" },
           {
             urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkFirst",
-            options: { cacheName: "pages", networkTimeoutSeconds: 4, expiration: { maxEntries: 8 } }
+            handler: "NetworkOnly",
+            options: { precacheFallback: { fallbackURL: "index.html" } }
           }
         ]
       }
