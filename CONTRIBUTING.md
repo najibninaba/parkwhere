@@ -29,6 +29,28 @@ The app runs without any keys. Place search falls back to HDB carpark addresses,
 
 Pull requests from this repository get a preview deployment and captured proof (screenshots, a walkthrough and checks) in their description. Pull requests from forks don't get previews, because they don't receive deploy secrets. A maintainer can check them out locally instead.
 
+## Updating dependencies
+
+Dependencies are updated by hand; Dependabot alerts are on, but it doesn't open pull requests. Every version in `package.json` is pinned exactly, so an update is always a deliberate change with its own pull request.
+
+1. See what's behind and whether anything is vulnerable:
+
+   ```sh
+   pnpm outdated
+   pnpm audit --prod
+   ```
+
+2. Update with exact versions, for example `pnpm add -D vite@8.4.0` or `pnpm add effect@4.1.0`. Patch and minor updates can share one pull request. Take major versions one at a time, and read the release notes first.
+3. Run `pnpm check`, then `pnpm check:mobile` with `pnpm dev` running. Open a pull request, and the preview and proof show the app still works.
+
+Things to watch:
+
+- **Effect and TypeScript:** check changed APIs against the installed types (`node_modules/effect/dist/*.d.ts`) rather than older docs.
+- **Wrangler and `@cloudflare/vite-plugin`:** update them together, since the plugin declares the Wrangler versions it supports. If you move `compatibility_date` in `wrangler.jsonc`, change the matching date in `.github/workflows/preview.yml`. CI fails until they match.
+- **GitHub Actions:** third-party actions are pinned to a commit SHA, with the version in a comment. Update both, and run `actionlint` on the workflows.
+- **New packages with install scripts** (native builds) need adding to `onlyBuiltDependencies` in `pnpm-workspace.yaml`, or pnpm skips their build.
+- **Playwright (`playwright-core`):** after an update, run `pnpm exec playwright-core install ffmpeg` again if `pnpm proof` or `pnpm media` can't record video.
+
 ## Writing copy
 
 Text in the app should be plain and specific. Use short sentences and the words drivers use. Say what a number is and when it was reported. Avoid hype, em dashes and "not X, but Y" phrasing. AGENTS.md lists the terms the app uses.
