@@ -101,3 +101,10 @@ export interface SearchResponse {
   results: Place[];
   source: string;
 }
+
+/** All carparks as map dots: [lat, lng, level code from shared/levels LEVEL_CODES]. */
+export interface OverviewResponse {
+  feed: FeedStatus;
+  counts: { carparks: number; reporting: number; withSpaces: number };
+  points: [number, number, number][];
+}

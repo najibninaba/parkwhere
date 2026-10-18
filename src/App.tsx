@@ -1,18 +1,21 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import type { NearbyCarpark, NearbyResponse } from "../shared/domain";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { NearbyCarpark, NearbyResponse, OverviewResponse } from "../shared/domain";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore } from "../shared/nearby";
 import { parseSgtLocal, toSgtLocal } from "../shared/sgt";
 import { estimateCost, type CostEstimate } from "../shared/tariff";
-import { ApiError, fetchNearby } from "./api";
+import { ApiError, fetchNearby, fetchOverview } from "./api";
 import { withTimeout } from "./timeout";
+import { CardSkeleton } from "./components/CardSkeleton";
 import { CarparkCard } from "./components/CarparkCard";
+import { Landing } from "./components/Landing";
+import { LiveLine, MapLegend, overviewIsCurrent } from "./components/MapOverlays";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { PlanBar, type SortKey } from "./components/PlanBar";
 import { SearchBox, type Destination } from "./components/SearchBox";
 import { age, distance, feedSentence, isCurrent, lotTypeNote } from "./format";
 
-const CarparkMap = lazy(() => import("./components/CarparkMap"));
+const ParkMap = lazy(() => import("./components/ParkMap"));
 const REFRESH_MS = 60_000;
 
 function initialArrival(now = Date.now()) {
@@ -64,6 +67,47 @@ export default function App() {
   const [load, setLoad] = useState<Load>({ kind: "idle" });
   const [now, setNow] = useState(() => Date.now());
   const [reloadKey, setReloadKey] = useState(0);
+  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewFailed, setOverviewFailed] = useState(false);
+
+  // Every carpark for the map, refreshed while the page is visible. A failure is shown, and old
+  // colours expire (see overviewIsCurrent) rather than staying "live" forever.
+  // Polled only on the landing page, where the dots are the point; one request at a time; refetched as
+  // soon as the tab is visible again.
+  const landing = destination === null;
+  useEffect(() => {
+    if (!landing) return;
+    const controller = new AbortController();
+    let inFlight = false;
+    const run = () => {
+      if (inFlight) return;
+      inFlight = true;
+      fetchOverview(controller.signal)
+        .then((data) => {
+          setOverview(data);
+          setOverviewFailed(false);
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) setOverviewFailed(true);
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    run();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") run();
+    }, REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [landing]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -146,9 +190,22 @@ export default function App() {
     document.getElementById(`carpark-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
 
-  const choose = (next: Destination) => {
+  // After a reader picks a place (or clears it), focus moves to the new panel's heading, because the
+  // control they used is gone. Not on first load, where the page should start at the top.
+  const results = useRef<HTMLHeadingElement>(null);
+  const hero = useRef<HTMLHeadingElement>(null);
+  const moveFocus = useRef(false);
+  useEffect(() => {
+    if (!moveFocus.current) return;
+    moveFocus.current = false;
+    (destination ? results.current : hero.current)?.focus({ preventScroll: true });
+  }, [destination]);
+
+  const choose = (next: Destination | null) => {
     setSelectedId(null);
+    moveFocus.current = true;
     setDestination(next);
+    window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
 
   const feed = data ? feedSentence(data.feed, now) : null;
@@ -158,61 +215,61 @@ export default function App() {
   return (
     <div className="app">
       <Header />
-      <main className="layout">
-        <section className="controls" aria-label="Plan">
-          <SearchBox destination={destination} onChoose={choose} />
-          {destination && (
-            <p className="destination">
-              Parking near <strong>{destination.name}</strong>
-            </p>
-          )}
-          <PlanBar
-            arrival={arrival}
-            onArrival={setArrival}
-            durationMinutes={durationMinutes}
-            onDuration={setDurationMinutes}
-            radiusM={radiusM}
-            onRadius={setRadiusM}
-            sort={sort}
-            onSort={setSort}
-          />
-        </section>
-
-        {!destination && (
-          <section className="empty">
-            <h1>Find HDB parking near where you’re going.</h1>
-            <p>Search for a place, or use your location. You’ll see live car spaces, how old each count is, and what your stay should cost.</p>
-          </section>
-        )}
-
-        {destination && (
-          <>
-            <div className="status">
-              {/* Announce changes of state only; the ages in the banners tick and would repeat endlessly. */}
-              <p className="sr-only" aria-live="polite">
-                {load.kind === "loading" && !data ? "Loading carparks." : ""}
-                {load.kind === "error" ? `Couldn't load carparks: ${load.message}` : ""}
-                {data ? `${data.carparks.length} carparks listed. ${feedStateAnnouncement(data.feed.state)}` : ""}
-              </p>
-              {load.kind === "loading" && !data && <p className="banner">Loading carparks…</p>}
-              {load.kind === "error" && (
-                <p className="banner banner-bad">
-                  {data ? `Couldn't refresh (${load.message}). Showing results loaded ${age(shown ? new Date(shown.receivedAt).toISOString() : null, now)}.` : load.message}{" "}
-                  <button type="button" className="link" onClick={() => setReloadKey((key) => key + 1)}>
-                    Try again
-                  </button>
-                </p>
-              )}
-              {feed && <p className={`banner banner-${feed.tone}`}>{feed.text}</p>}
+      <main className={`shell ${destination ? "shell-results" : "shell-landing"}`}>
+        <div className="panel">
+          {!destination && (
+            <div className="hero">
+              <h1 ref={hero} tabIndex={-1}>
+                Park near where you’re going.
+              </h1>
+              <p>Live HDB car spaces, how fresh each count is, and what your stay should cost, before you arrive.</p>
             </div>
+          )}
+          <SearchBox destination={destination} onChoose={choose} prominent={!destination} />
 
-            {data && (
-              <div className="results">
-                <div className="map-wrap">
-                  <Suspense fallback={<div className="map map-loading">Loading map…</div>}>
-                    <CarparkMap destination={destination} carparks={sortedCarparks} radiusM={data.query.radiusM} selectedId={selectedId} onSelect={select} />
-                  </Suspense>
-                </div>
+          {!destination && <Landing onChoose={choose} />}
+
+          {destination && (
+            <div className="results-panel">
+              <div className="destination">
+                <h2 ref={results} tabIndex={-1}>
+                  Parking near <strong>{destination.name}</strong>
+                </h2>
+                <button type="button" className="link" onClick={() => choose(null)}>
+                  Clear
+                </button>
+              </div>
+              <PlanBar
+                arrival={arrival}
+                onArrival={setArrival}
+                durationMinutes={durationMinutes}
+                onDuration={setDurationMinutes}
+                radiusM={radiusM}
+                onRadius={setRadiusM}
+                sort={sort}
+                onSort={setSort}
+              />
+              <div className="status">
+                {/* Announce changes of state only; the ages in the banners tick and would repeat endlessly. */}
+                <p className="sr-only" aria-live="polite">
+                  {load.kind === "loading" && !data ? "Loading carparks." : ""}
+                  {load.kind === "error" ? `Couldn't load carparks: ${load.message}` : ""}
+                  {data ? `${data.carparks.length} carparks listed. ${feedStateAnnouncement(data.feed.state)}` : ""}
+                </p>
+                {load.kind === "error" && (
+                  <p className="banner banner-bad">
+                    {data ? `Couldn't refresh (${load.message}). Showing results loaded ${age(shown ? new Date(shown.receivedAt).toISOString() : null, now)}.` : load.message}{" "}
+                    <button type="button" className="link" onClick={() => setReloadKey((key) => key + 1)}>
+                      Try again
+                    </button>
+                  </p>
+                )}
+                {feed && <p className={`banner banner-${feed.tone}`}>{feed.text}</p>}
+              </div>
+
+              {!data && load.kind !== "error" && <CardSkeleton />}
+
+              {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
                     <p className="banner">No HDB carparks with short-term parking within 2 km. HDB carparks are the only ones covered so far.</p>
@@ -228,7 +285,6 @@ export default function App() {
                           Showing the nearest {data.carparks.length} of {data.withinRadius} HDB carparks within {distance(data.query.radiusM)}. Sorting applies to these {data.carparks.length}.
                         </p>
                       )}
-                      <p className="hint">{lotTypeNote} Distances are straight-line from your destination.</p>
                       <ol className="list">
                         {rows.map(({ carpark, estimate }, index) => (
                           <CarparkCard
@@ -243,13 +299,30 @@ export default function App() {
                           />
                         ))}
                       </ol>
+                      <p className="hint">{lotTypeNote} Distances are straight-line from your destination.</p>
                     </>
                   )}
                 </div>
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </div>
+          )}
+        </div>
+        <div className="map-pane">
+          <Suspense fallback={<div className="map-frame"><div className="map-skeleton" aria-hidden="true"><span>Loading map…</span></div></div>}>
+            <ParkMap
+              overview={overview?.points ?? null}
+              overviewCurrent={overviewIsCurrent(overview, now)}
+              destination={destination}
+              carparks={sortedCarparks}
+              radiusM={data?.query.radiusM ?? radiusM}
+              selectedId={selectedId}
+              onSelect={select}
+              onSearchArea={(center) => choose({ name: "Map area", ...center })}
+            />
+          </Suspense>
+          {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}
+          <MapLegend />
+        </div>
       </main>
       <Footer registryFetchedAt={data?.registry.fetchedAt ?? null} />
     </div>

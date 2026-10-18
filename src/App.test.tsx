@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NearbyCarpark, NearbyResponse } from "../shared/domain";
 import App from "./App";
 
-vi.mock("./components/CarparkMap", () => ({ default: () => <div data-testid="map" /> }));
+vi.mock("./components/ParkMap", () => ({ default: () => <div data-testid="map" /> }));
 
 const base: Omit<NearbyCarpark, "id" | "address" | "distanceM" | "car"> = {
   lat: 1.3011,
@@ -36,10 +36,17 @@ function nearby(overrides: Partial<NearbyResponse> = {}): NearbyResponse {
 }
 
 let nearbyResponse: () => Response;
+let overviewResponse: () => Response;
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   nearbyResponse = () => Response.json(nearby());
+  overviewResponse = () =>
+    Response.json({
+      feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+      points: [[1.3, 103.85, 4]]
+    });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -53,6 +60,7 @@ beforeEach(() => {
         });
       }
       if (url.startsWith("/api/nearby")) return nearbyResponse();
+      if (url.startsWith("/api/overview")) return overviewResponse();
       return new Response("not found", { status: 404 });
     })
   );
@@ -69,10 +77,71 @@ async function searchAndChoose() {
 }
 
 describe("ParkWhere app", () => {
-  it("starts with a clear prompt and no fake results", () => {
+  it("starts with a clear call to action and no fake results", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: /find hdb parking/i })).toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /park near where you’re going/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /where are you going/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /near me/i })).toBeInTheDocument();
+    expect(document.querySelector(".card")).toBeNull();
+  });
+
+  it("starts a search from a quick pick", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Chinatown" }));
+    expect(await screen.findByText("Blk 1 Known Street")).toBeInTheDocument();
+    expect(screen.getByText("People's Park Complex")).toBeInTheDocument();
+    expect(window.location.search).toContain("lat=1.28413");
+  });
+
+  it("says how many carparks have spaces on the landing map", async () => {
+    render(<App />);
+    expect(await screen.findByText(/carparks have car spaces now/)).toHaveTextContent(/1,412 HDB carparks have car spaces now · 1,987 reported in the last 15 min · updated \d min ago/);
+  });
+
+  it("stops claiming 'now' when the overview is out of date, and says when it can't load", async () => {
+    overviewResponse = () =>
+      Response.json({
+        feed: { state: "last-good", fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() },
+        counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+        points: []
+      });
+    const { unmount } = render(<App />);
+    expect(await screen.findByText(/Live counts are out of date/)).toHaveTextContent(/last updated (39|40) min ago · refresh failed/);
+    expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+    unmount();
+    overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
+    render(<App />);
+    expect(await screen.findByText(/Couldn't load live counts/)).toBeInTheDocument();
+  });
+
+  it("labels a failed refresh even while the last counts are recent", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<App />);
+      expect(await screen.findByText(/have car spaces now/)).toBeInTheDocument();
+      overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(await screen.findByText(/had car spaces .* ago/)).toHaveTextContent(/latest refresh failed/);
+      expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("moves focus to the results heading after a quick pick", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Bugis" }));
+    expect(screen.getByRole("heading", { name: /Parking near Bugis Junction/ })).toHaveFocus();
+  });
+
+  it("goes back to the landing page with Clear", async () => {
+    const user = await searchAndChoose();
+    await screen.findByText("Blk 1 Known Street");
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("heading", { name: /park near where you’re going/i })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 
   it("shows nearby carparks with spaces, their age and a cost estimate", async () => {
@@ -118,6 +187,12 @@ describe("ParkWhere app", () => {
     const user = await searchAndChoose();
     expect(await screen.findByText(/Something went wrong on our side/, { selector: ".banner" })).toBeInTheDocument();
     nearbyResponse = () => Response.json(nearby());
+  overviewResponse = () =>
+    Response.json({
+      feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+      points: [[1.3, 103.85, 4]]
+    });
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(await screen.findByText("Blk 1 Known Street")).toBeInTheDocument();
   });

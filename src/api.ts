@@ -1,4 +1,4 @@
-import type { NearbyResponse, SearchResponse } from "../shared/domain";
+import type { NearbyResponse, OverviewResponse, SearchResponse } from "../shared/domain";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -24,3 +24,5 @@ export const fetchNearby = (lat: number, lng: number, radiusM: number, signal?: 
 
 export const searchPlaces = (query: string, signal?: AbortSignal) =>
   getJson<SearchResponse>(`/api/search?q=${encodeURIComponent(query)}`, signal);
+
+export const fetchOverview = (signal?: AbortSignal) => getJson<OverviewResponse>("/api/overview", signal);

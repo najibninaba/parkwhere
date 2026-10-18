@@ -50,7 +50,18 @@ async function onemapToken(env: SearchEnv, fetcher: Fetcher, now: Date): Promise
   return token.access_token;
 }
 
-const title = (value: string) => value.toLowerCase().replace(/\b([a-z])/g, (letter) => letter.toUpperCase());
+// Capitalise words, but not letters after an apostrophe ("People's", not "People'S").
+// OneMap returns everything in capitals, so known acronyms are restored from a short list.
+const ACRONYMS = new Set(["AMK", "CPF", "DBS", "ESH", "GV", "HDB", "ITE", "JEM", "LRT", "MBS", "MRT", "NTU", "NTUC", "NUS", "OCBC", "SMU", "UOB", "YMCA"]);
+const title = (value: string) =>
+  value
+    .split(/(\s+)/)
+    .map((word) => {
+      const bare = word.replace(/[^A-Za-z]/g, "").toUpperCase();
+      if (ACRONYMS.has(bare)) return word.toUpperCase();
+      return word.toLowerCase().replace(/^([^a-z]*)([a-z])/, (_, lead: string, letter: string) => lead + letter.toUpperCase());
+    })
+    .join("");
 
 export async function searchOneMap(env: SearchEnv, query: string, fetcher: Fetcher = fetch, now = new Date()): Promise<Place[]> {
   const token = await onemapToken(env, fetcher, now);
