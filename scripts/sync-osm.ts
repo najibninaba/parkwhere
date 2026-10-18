@@ -89,7 +89,7 @@ async function main() {
   const carparks = selectOsmCarparks(features, registry.carparks);
   const dataAt = osmium("fileinfo", "-g", "header.option.osmosis_replication_timestamp", source).trim() || null;
   const out: OsmFile = {
-    source: { name: "OpenStreetMap", licence: "ODbL-1.0", extract: EXTRACT_URL, dataAt, builtAt: new Date().toISOString() },
+    source: { name: "OpenStreetMap", licence: "ODbL-1.0", extract: EXTRACT_URL, dataAt },
     carparks
   };
   await writeFile(OUT, `${JSON.stringify(out, null, 0)}\n`);

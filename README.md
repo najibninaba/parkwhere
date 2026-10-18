@@ -74,7 +74,8 @@ One Cloudflare Worker serves the web app and a small JSON API:
 - **Carpark locations and details** come from the [HDB Carpark Information](https://data.gov.sg/datasets/d_23f946fa557947f93a8043bbef41dd09/view) registry, bundled as `worker/registry.json` and converted from SVY21. Refresh it with `pnpm registry`.
 - **Public carparks without counts** come from [OpenStreetMap](https://www.openstreetmap.org/copyright), bundled as `worker/osm-carparks.json`.
   - Only carparks and entrances tagged as open to the public, customers or with permission are kept. A carpark with no access tag is left out, because it's often a condo or office carpark.
-  - Street parking, HDB-run carparks and anything within 80 m of an HDB, LTA or URA carpark are left out, so no carpark is listed twice.
+  - Street parking, HDB-run carparks, and parking for heavy vehicles, loading, drop-off or season holders are left out.
+  - So that no carpark is listed twice, one is also left out when it's within 80 m of an HDB, LTA or URA carpark, has the same name as an LTA or URA carpark within 300 m, or is unnamed and within 250 m of one. A carpark that OpenStreetMap maps more than once (as a point, an area and entrances) is listed once.
   - They have no count and no price. Directions go to a mapped entrance when there is one.
   - Refresh with `pnpm osm`, which needs [osmium-tool](https://osmcode.org/osmium-tool/) and caches Geofabrik's 250 MB Malaysia, Singapore and Brunei extract in `.cache/osm/`.
 - **Place search and map tiles** come from [OneMap](https://www.onemap.gov.sg/) (Singapore Land Authority). Search needs `ONEMAP_EMAIL` and `ONEMAP_PASSWORD`, and the token is cached in D1.
@@ -138,7 +139,7 @@ You can also deploy by hand with `pnpm run deploy:staging` and `pnpm run deploy`
 - Prices for mall and URA carparks. LTA's only rates dataset is free text from 2018, and URA's rates API needs a separate URA key.
 - Price estimates for coupon carparks, stays during peak-hour windows, and Central Area rates on weekday public holidays.
 - Carparks that report to neither HDB nor LTA, unless OpenStreetMap tags them as public. Jewel and Singapore Expo, for example, are mapped with no access tag, so they're left out.
-- Walking distances and verified entrances. Distances are in a straight line, and directions go to the registry's mapped point.
+- Walking distances and verified entrances. Distances are in a straight line. Directions go to the carpark's mapped point, or to an entrance mapped on OpenStreetMap, and ParkWhere hasn't checked either.
 - Public holidays after 2027. Add them to `shared/holidays.ts` when MOM publishes them.
 - Dark mode.
 

@@ -157,6 +157,8 @@ export interface OsmDetails {
   access: OsmAccess;
   /** True when the point is a mapped carpark entrance; otherwise it's the middle of the mapped carpark. */
   atEntrance: boolean;
+  /** False when OpenStreetMap gives no name, so the card shows what it is ("Underground carpark entrance"). */
+  named: boolean;
 }
 
 /** A public carpark or carpark entrance mapped on OpenStreetMap, as written by scripts/sync-osm.ts. */
@@ -181,9 +183,8 @@ export interface OsmFile {
     licence: "ODbL-1.0";
     /** The Geofabrik extract it was cut from. */
     extract: string;
-    /** When the extract's data was current (its replication timestamp). */
+    /** When the extract's data was current (its replication timestamp). No build time, so an unchanged refresh leaves the file unchanged. */
     dataAt: string | null;
-    builtAt: string;
   };
   carparks: OsmCarpark[];
 }

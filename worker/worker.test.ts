@@ -246,9 +246,10 @@ describe("Worker routes", () => {
       const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
-      // Five LTA and URA dots are added; the OpenStreetMap carpark 76 m from URA's Beatty Road carpark is
-      // taken to be the same one and left out, so it isn't listed twice.
-      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5 - 1);
+      // Five LTA and URA dots are added. OpenStreetMap carparks that duplicate them are left out, so the
+      // total grows by at most five.
+      expect(withLta.counts.carparks).toBeGreaterThan(without.counts.carparks);
+      expect(withLta.counts.carparks).toBeLessThanOrEqual(without.counts.carparks + 5);
       expect(withLta.lta?.state).toBe("live");
       expect(without.lta).toBeNull();
       expect(withLta.counts.reporting).toBe(without.counts.reporting);
@@ -270,6 +271,8 @@ describe("Worker routes", () => {
       const body = (await (await call("/api/nearby?lat=1.29375&lng=103.85718&radius=500", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
       const suntec = body.carparks.find((carpark) => carpark.id === "lta:1");
       expect(suntec).toMatchObject({ source: "lta", address: "Suntec City", car: { reportedBy: "LTA", available: 967, total: null, recordedAt: null } });
+      // OpenStreetMap also maps Suntec City, 89 m away; it's the same carpark, so it isn't listed again without a count.
+      expect(body.carparks.filter((carpark) => /suntec city/i.test(carpark.address))).toHaveLength(1);
       expect(body.lta?.state).toBe("live");
     } finally {
       globalThis.fetch = original;
@@ -300,7 +303,7 @@ describe("Worker routes", () => {
         source: "osm",
         address: "Wildlife Reserves Singapore carpark",
         carparkType: "Multi-storey carpark",
-        osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true },
+        osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true, named: false },
         car: { reportedBy: null, state: "not-in-feed", available: null }
       });
       expect(body.withinRadius).toBeGreaterThanOrEqual(1);

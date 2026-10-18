@@ -49,7 +49,7 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 7. Cost estimates come only from rules HDB publishes (see the header of `shared/tariff.ts`). When a rule is missing or ambiguous (coupon carparks, peak windows, Central Area rates on public holidays, unpublished holiday years), return `unavailable` with the published rate.
 8. Don't add accounts, payments, bookings, predictions, entrance photos or manual walking routes.
 9. LTA DataMall counts have no time and no total. Never colour them as current, never write "now" about them, and never price them. HDB rows from LTA are dropped in favour of data.gov.sg's.
-10. OpenStreetMap carparks have no count and no price. Keep one only when it's explicitly tagged `access=yes`, `customers` or `permissive`: a missing tag never means public. One within 80 m of an HDB, LTA or URA carpark is the same carpark and is left out. A mapped entrance is still unverified, so the card says so.
+10. OpenStreetMap carparks have no count and no price. Keep one only when it's explicitly tagged `access=yes`, `customers` or `permissive`: a missing tag never means public. Heavy-vehicle, loading, drop-off, season-only and HDB-run parking is left out. One within 80 m of an HDB, LTA or URA carpark, with the same name as an LTA or URA carpark within 300 m, or unnamed within 250 m of one, is the same carpark and is left out. A mapped entrance is still unverified, so the card says so.
 
 ## External services
 

@@ -97,7 +97,7 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
   const source = carpark.source ?? "hdb";
   const tags = source === "osm" ? [
     "Mapped on OpenStreetMap",
-    carpark.osm?.access === "customers" ? "For customers" : null,
+    carpark.osm?.access === "customers" ? "Customers only" : null,
     carpark.gantryHeightM ? `Height limit ${carpark.gantryHeightM} m` : null
   ].filter((tag): tag is string => Boolean(tag)) : source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
     CENTRAL_AREA_CARPARKS.has(carpark.id) ? "Central Area" : null,
@@ -141,7 +141,7 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
             ))}
             <p className="hint">
               {carpark.osm?.atEntrance
-                ? "Goes to a carpark entrance mapped on OpenStreetMap. Check the signs when you get there."
+                ? "Goes to an entrance mapped on OpenStreetMap, which ParkWhere hasn't verified. Look for the signs when you get there."
                 : "Goes to the carpark's mapped location, which may not be its entrance."}
             </p>
           </div>

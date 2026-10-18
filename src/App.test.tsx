@@ -293,7 +293,7 @@ describe("ParkWhere app", () => {
               nightParking: false,
               gantryHeightM: null,
               distanceM: 489,
-              osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true },
+              osm: { url: "https://www.openstreetmap.org/way/177625322", access: "yes", atEntrance: true, named: false },
               car: { reportedBy: null, state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" }
             }
           ]
@@ -307,7 +307,7 @@ describe("ParkWhere app", () => {
     expect(within(card).getByText("Mapped on OpenStreetMap")).toBeInTheDocument();
     expect(within(card).queryByText("0")).not.toBeInTheDocument();
     await user.click(within(card).getByText("Directions"));
-    expect(within(card).getByText(/carpark entrance mapped on OpenStreetMap/)).toBeInTheDocument();
+    expect(within(card).getByText(/entrance mapped on OpenStreetMap, which ParkWhere hasn.t verified/)).toBeInTheDocument();
     await user.click(within(card).getByText("Rates"));
     expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/way/177625322");
   });
