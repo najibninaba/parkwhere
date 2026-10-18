@@ -21,7 +21,7 @@ export default defineConfig({
       manifest: {
         name: "ParkWhere: Singapore parking",
         short_name: "ParkWhere",
-        description: "Find a carpark near where you're going in Singapore, with available car lots and price estimates.",
+        description: "Singapore parking finder: nearby carparks, available car lots and estimated parking costs.",
         theme_color: "#151412",
         background_color: "#f5f0e5",
         display: "standalone",

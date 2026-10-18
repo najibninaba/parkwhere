@@ -227,7 +227,7 @@ export default function App() {
               <h1 ref={hero} tabIndex={-1}>
                 Park near where you’re going.
               </h1>
-              <p>See available car lots near your destination, how recent each count is, and what your stay should cost, before you get there.</p>
+              <p>See nearby carparks, available car lots and estimated parking costs before you get there.</p>
             </div>
           )}
           <SearchBox destination={destination} onChoose={choose} prominent={!destination} />

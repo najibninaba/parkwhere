@@ -2,7 +2,7 @@
   "name": "parkwhere",
   "private": true,
   "version": "0.1.0",
-  "description": "Find a carpark near where you're going in Singapore, with available car lots and price estimates.",
+  "description": "Singapore parking finder: nearby carparks, available car lots and estimated parking costs.",
   "license": "MIT",
   "repository": {
     "type": "git",

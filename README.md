@@ -5,8 +5,8 @@
 <h1 align="center">ParkWhere</h1>
 
 <p align="center">
-  Find a carpark near where you're going in Singapore.<br>
-  See how many car lots are available, when each count was reported, and what your stay should cost.
+  Singapore parking finder.<br>
+  See carparks near where you're going, available car lots and estimated parking costs.
 </p>
 
 <p align="center">
@@ -37,7 +37,7 @@
 
 - **Shows carparks on a map.** Every HDB carpark, the mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap, such as the zoo's. Dots are coloured by how many car lots are available. OpenStreetMap carparks have no count, so their dots are grey.
 - **Says how recent each count is.** HDB counts show when the carpark last reported. LTA counts have no time, so they're shown as reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
-- **Estimates what your stay costs at HDB carparks.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate. Mall, URA and OpenStreetMap carparks say "No estimate".
+- **Estimates parking costs at HDB carparks.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate. Mall, URA and OpenStreetMap carparks say "No estimate".
 - **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location, or at its entrance when OpenStreetMap maps one.
 
 <p align="center">
