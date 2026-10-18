@@ -30,9 +30,12 @@ function location(value: unknown): { lat: number; lng: number } | null {
   return Number.isFinite(lat) && Number.isFinite(lng) && isInSingapore(lat, lng) ? { lat, lng } : null;
 }
 
-export function normaliseLta(rows: readonly LtaRow[], fetchedAt: Date): LtaSnapshot {
+export function normaliseLta(rows: readonly unknown[], fetchedAt: Date): LtaSnapshot {
   const carparks = new Map<string, LtaCarpark>();
-  for (const row of rows) {
+  for (const item of rows) {
+    // The page is decoded as unknown rows; anything that isn't an object is skipped, never fatal.
+    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+    const row = item as LtaRow;
     const agency = text(row.Agency).toUpperCase();
     if ((agency !== "LTA" && agency !== "URA") || text(row.LotType).toUpperCase() !== "C") continue;
     const id = text(row.CarParkID);

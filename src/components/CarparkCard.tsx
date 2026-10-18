@@ -41,7 +41,7 @@ function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
       <div className={`spaces spaces-${level}`}>
         <span className="spaces-count">{car.available}</span>
         <span className="spaces-meta">
-          {car.available === 0 ? "reported full" : "car lots free, as reported"}
+          car lots free, as reported
           <br />
           LTA gives no time or total
         </span>
@@ -143,9 +143,11 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
                   {line.label}: {money(line.cents)}
                 </p>
               ))}
-            <p className="hint">
-              Source: <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a>
-            </p>
+            {source === "hdb" && (
+              <p className="hint">
+                Source: <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a>
+              </p>
+            )}
           </div>
         </details>
       </div>

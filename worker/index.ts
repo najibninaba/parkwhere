@@ -116,9 +116,12 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
 
 async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
   const now = new Date();
-  const feed = await getFeed(env, (promise) => ctx.waitUntil(promise));
+  const waitUntil = (promise: Promise<unknown>) => ctx.waitUntil(promise);
+  const [feed, lta] = await Promise.all([
+    getFeed(env, waitUntil).catch(storeDown("HDB")) as Promise<FeedRead>,
+    getLtaFeed(env, waitUntil)?.catch(storeDown("LTA")) as Promise<LtaRead> | undefined
+  ]);
   const status = feedStatus(feed.snapshot, feed.status, now);
-  const lta = await getLtaFeed(env, (promise) => ctx.waitUntil(promise))?.catch(storeDown("LTA"));
   return json(
     {
       // Health follows the HDB feed, which the app depends on; LTA is reported but optional.

@@ -2,7 +2,7 @@
 // size "may be adjusted from time to time", so paging stops at the first empty page, not a short one.
 import { Effect, Schedule, Schema } from "effect";
 import type { LtaSnapshot } from "../shared/domain";
-import { normaliseLta, type LtaRow } from "../shared/lta";
+import { normaliseLta } from "../shared/lta";
 import { UpstreamError, type Fetcher } from "./upstream";
 
 export const LTA_URL = "https://datamall2.mytransport.sg/ltaodataservice/CarParkAvailabilityv2";
@@ -13,8 +13,12 @@ const ATTEMPT_TIMEOUT_MS = 8_000;
  * LTA fails cleanly and records why instead of being cut off mid-write.
  */
 export const LTA_BUDGET_MS = 20_000;
-/** Today's feed is about 2,600 rows (6 pages); stop well before a runaway loop. */
-const MAX_PAGES = 12;
+/**
+ * Guards against a runaway loop without assuming LTA's page size (500 today, "may be adjusted"):
+ * the time budget bounds the loop too. Today's feed is about 2,600 rows.
+ */
+const MAX_ROWS = 20_000;
+const MAX_REQUESTS = 60;
 
 const Page = Schema.Struct({ value: Schema.Array(Schema.Unknown) });
 
@@ -51,15 +55,15 @@ const page = (fetcher: Fetcher, accountKey: string, skip: number, deadline: numb
         Effect.mapError(() => new UpstreamError({ message: "LTA DataMall returned an unexpected format", retryable: false }))
       )
     ),
-    Effect.map((decoded) => decoded.value as readonly LtaRow[])
+    Effect.map((decoded) => decoded.value)
   );
 
 /** Fetches every page and keeps the LTA and URA car rows. */
 export const fetchLta = (fetcher: Fetcher, accountKey: string, now: () => Date = () => new Date(), budgetMs = LTA_BUDGET_MS) =>
   Effect.gen(function* () {
     const deadline = Date.now() + budgetMs;
-    const rows: LtaRow[] = [];
-    for (let index = 0; index < MAX_PAGES; index += 1) {
+    const rows: unknown[] = [];
+    for (let request = 0; request < MAX_REQUESTS && rows.length <= MAX_ROWS; request += 1) {
       const batch = yield* page(fetcher, accountKey, rows.length, deadline);
       if (batch.length === 0) {
         const snapshot: LtaSnapshot = normaliseLta(rows, now());

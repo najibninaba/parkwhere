@@ -37,6 +37,22 @@ describe("normaliseLta (real LTA DataMall sample)", () => {
     expect(odd.carparks[0].carLots).toBeNull();
   });
 
+  it("skips rows that aren't objects instead of failing the feed", () => {
+    const messy = normaliseLta([null, "row", 42, [], ...rows], new Date());
+    expect(messy.carparks).toHaveLength(5);
+  });
+
+  it("keeps the same carpark number apart across agencies", () => {
+    const both = normaliseLta(
+      [
+        { CarParkID: "7", Agency: "LTA", LotType: "C", Location: "1.30 103.85", AvailableLots: 5, Development: "Mall" },
+        { CarParkID: "7", Agency: "URA", LotType: "C", Location: "1.31 103.86", AvailableLots: 9, Development: "SOME RD OFF ST" }
+      ],
+      new Date()
+    );
+    expect(both.carparks.map((carpark) => carpark.key)).toEqual(["lta:7", "ura:7"]);
+  });
+
   it("tidies names without touching mixed-case ones", () => {
     expect(ltaName("Suntec City")).toBe("Suntec City");
     expect(ltaName("ARAB ST - QUEEN ST OFF  ST")).toBe("Arab St - Queen St (off-street)");

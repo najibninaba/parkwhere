@@ -149,6 +149,19 @@ describe("getLtaFeed", () => {
     expect(read.snapshot?.carparks.map((carpark) => carpark.key)).toEqual(["lta:1", "lta:2", "lta:3", "ura:A0007", "ura:B0031"]);
   });
 
+  it("follows a smaller page size than today's 500", async () => {
+    const all = ltaSample.value;
+    const skips: number[] = [];
+    const fetcher = vi.fn(async (input: string) => {
+      const skip = Number(new URL(input).searchParams.get("$skip"));
+      skips.push(skip);
+      return Response.json({ value: all.slice(skip, skip + 2) });
+    });
+    const read = await getLtaFeed({ DB: createTestD1(), LTA_DATAMALL_ACCOUNT_KEY: "test-key" }, noWait, fetcher)!;
+    expect(skips).toEqual([0, 2, 4, 6, 8, 9]);
+    expect(read.snapshot?.carparks).toHaveLength(5);
+  });
+
   it("gives up cleanly when the whole paged fetch runs past its budget", async () => {
     const slowPages = vi.fn(async (_input: string, init?: RequestInit) => {
       await new Promise((resolve, reject) => {
@@ -217,6 +230,26 @@ describe("Worker routes", () => {
       // The fixture holds only a handful of carparks, and its records are hours old by now: none count as current.
       expect(body.counts.withSpaces).toBeLessThanOrEqual(body.counts.reporting);
       expect(body.points.filter(([, , code]) => code !== 0).length).toBe(body.counts.reporting);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("shows LTA carparks as grey dots on the overview, outside the 'reporting' count", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith(LTA_URL)) return url.endsWith("$skip=0") ? Response.json({ value: ltaSample.value }) : Response.json({ value: [] });
+      return Response.json(sample);
+    }) as typeof fetch;
+    try {
+      const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
+      resetFeedMemory();
+      const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
+      expect(withLta.counts.carparks).toBe(without.counts.carparks + 5);
+      expect(withLta.counts.reporting).toBe(without.counts.reporting);
+      const suntec = withLta.points.find(([lat, lng]) => lat === 1.29375 && lng === 103.85718);
+      expect(suntec?.[2]).toBe(0);
     } finally {
       globalThis.fetch = original;
     }
