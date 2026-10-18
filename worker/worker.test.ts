@@ -247,6 +247,8 @@ describe("Worker routes", () => {
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
       expect(withLta.counts.carparks).toBe(without.counts.carparks + 5);
+      expect(withLta.lta?.state).toBe("live");
+      expect(without.lta).toBeNull();
       expect(withLta.counts.reporting).toBe(without.counts.reporting);
       const suntec = withLta.points.find(([lat, lng]) => lat === 1.29375 && lng === 103.85718);
       expect(suntec?.[2]).toBe(0);
@@ -276,6 +278,9 @@ describe("Worker routes", () => {
       const body = (await (await call("/api/nearby?lat=1.30106&lng=103.85412", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
       expect(body.lta).toMatchObject({ state: "unavailable", refreshError: "LTA DataMall returned HTTP 503" });
       expect(body.feed.state).not.toBe("unavailable");
+      resetFeedMemory();
+      const overview = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
+      expect(overview.lta).toMatchObject({ state: "unavailable", refreshError: "LTA DataMall returned HTTP 503" });
       expect(body.carparks[0].id).toBe("ACB");
     } finally {
       globalThis.fetch = original;

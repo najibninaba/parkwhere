@@ -117,6 +117,8 @@ export interface SearchResponse {
 /** All carparks as map dots: [lat, lng, level code from shared/levels LEVEL_CODES]. */
 export interface OverviewResponse {
   feed: FeedStatus;
+  /** LTA DataMall feed behind the mall and URA dots; null when LTA isn't configured. */
+  lta: FeedStatus | null;
   counts: { carparks: number; reporting: number; withSpaces: number };
   points: [number, number, number][];
 }

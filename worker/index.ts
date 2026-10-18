@@ -95,7 +95,7 @@ async function overview(env: Env, ctx: ExecutionContext): Promise<Response> {
     }
     points.push([Number(carpark.lat.toFixed(5)), Number(carpark.lng.toFixed(5)), levelCode(level)]);
   }
-  const body: OverviewResponse = { feed: feeds.hdbStatus, counts: { carparks: points.length, reporting, withSpaces }, points };
+  const body: OverviewResponse = { feed: feeds.hdbStatus, lta: feeds.ltaStatus, counts: { carparks: points.length, reporting, withSpaces }, points };
   return json(body, 200, "public, max-age=30");
 }
 

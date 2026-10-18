@@ -45,6 +45,7 @@ beforeEach(() => {
   overviewResponse = () =>
     Response.json({
       feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      lta: null,
       counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
       points: [[1.3, 103.85, 4]]
     });
@@ -104,6 +105,7 @@ describe("ParkWhere app", () => {
     overviewResponse = () =>
       Response.json({
         feed: { state: "last-good", fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() },
+        lta: null,
         counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
         points: []
       });
@@ -128,6 +130,18 @@ describe("ParkWhere app", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("says on the landing map when the LTA feed behind mall and URA dots is failing", async () => {
+    overviewResponse = () =>
+      Response.json({
+        feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+        lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() },
+        counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+        points: []
+      });
+    render(<App />);
+    expect(await screen.findByText(/have car spaces now/)).toHaveTextContent(/mall and URA carparks unavailable/);
   });
 
   it("moves focus to the results heading after a quick pick", async () => {
@@ -191,6 +205,7 @@ describe("ParkWhere app", () => {
   overviewResponse = () =>
     Response.json({
       feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      lta: null,
       counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
       points: [[1.3, 103.85, 4]]
     });
