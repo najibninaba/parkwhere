@@ -101,6 +101,7 @@ The app runs without keys. To try OneMap search and mall carparks, put your own 
 | `pnpm proof <url>` | Captures proof from a deployed build, as CI does for each PR |
 | `pnpm registry` | Refreshes the bundled HDB carpark registry |
 | `pnpm osm [--refresh]` | Refreshes the bundled OpenStreetMap carparks (needs osmium-tool) |
+| `pnpm stats [--days 7 \| --month YYYY-MM --write]` | Reports usage counts; `--write` saves a monthly summary to `docs/stats/` |
 
 ## Environments and deploys
 
@@ -133,6 +134,16 @@ The app runs without keys. To try OneMap search and mall carparks, put your own 
 5. Update the staging database ID and the `workers.dev` subdomain in `.github/workflows/preview.yml`.
 
 You can also deploy by hand with `pnpm run deploy:staging` and `pnpm run deploy`. Roll back with `pnpm exec wrangler rollback` (add `--env staging` for staging).
+
+## Privacy and usage counts
+
+ParkWhere is free, so it counts a few things to judge whether it's useful: page loads, destination lookups (how the destination was chosen and what was found), place searches (the number of results only), directions opened, and server errors. Each count can carry the device type (phone or desktop), whether ParkWhere was opened as an installed app, the country Cloudflare reports, and the referring site's name. Reloading a page doesn't count as a new visit or lookup. The counts go to [Workers Analytics Engine](https://developers.cloudflare.com/analytics/analytics-engine/), which keeps them for three months; `pnpm stats --month YYYY-MM --write` keeps a monthly summary in `docs/stats/`.
+
+- **Never recorded:** cookies, IDs, IP addresses, search text, exact locations, or anything that links one visit to another. For referrers, only the referring site's name is kept (such as `google.com`), never the page or a personal subdomain.
+- **Rough area only for gaps:** when a place you searched for, picked or panned to has no carpark nearby, its area is recorded at about 2 km across, so coverage can be improved. Near me and shared links never record an area.
+- **Kept on your device:** nothing, unless you turn counting off for your browser by visiting `?nostats` (and back on with `?stats`).
+- **Not counted:** browsers that send Global Privacy Control or Do Not Track, automated browsers (including ParkWhere's own checks), bots and pull request previews. Staging writes to a separate dataset.
+- **Logs:** the Worker's request logs leave out query strings, which hold coordinates and search text. Cloudflare, which hosts ParkWhere, handles visitors' IP addresses to serve the site; ParkWhere doesn't store them.
 
 ## Not covered yet
 

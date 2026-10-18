@@ -12,7 +12,7 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
         <ul aria-labelledby="quick-picks-label">
           {QUICK_PICKS.map((place) => (
             <li key={place.label}>
-              <button type="button" className="chip chip-pick" onClick={() => onChoose(place)}>
+              <button type="button" className="chip chip-pick" onClick={() => onChoose({ ...place, via: "pick" })}>
                 {place.label}
               </button>
             </li>

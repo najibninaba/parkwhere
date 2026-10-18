@@ -11,6 +11,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { OsmFile, RegistryFile } from "../shared/domain.ts";
 import { selectOsmCarparks, type OsmFeature } from "../shared/osm.ts";
+import { pathToFileURL } from "node:url";
 
 const EXTRACT_URL = "https://download.geofabrik.de/asia/malaysia-singapore-brunei-latest.osm.pbf";
 /** Singapore's national boundary (admin_level 2). */
@@ -99,4 +100,5 @@ async function main() {
   console.log(`Wrote ${carparks.length} public carparks and entrances to worker/osm-carparks.json:`, kinds);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+// pathToFileURL, so a checkout path with spaces or other escaped characters still matches.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

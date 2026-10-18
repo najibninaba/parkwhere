@@ -17,6 +17,7 @@
     "typecheck": "tsc -b --pretty false",
     "registry": "node scripts/sync-registry.ts",
     "osm": "node scripts/sync-osm.ts",
+    "stats": "node scripts/stats.ts",
     "deploy": "pnpm build && wrangler deploy",
     "check:mobile": "node scripts/mobile-check.ts",
     "check": "pnpm typecheck && pnpm test && pnpm build",

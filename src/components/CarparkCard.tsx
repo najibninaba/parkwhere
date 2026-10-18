@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { NearbyCarpark } from "../../shared/domain";
 import { CENTRAL_AREA_CARPARKS, TARIFF_SOURCE, TARIFF_URL, publishedRate, type CostEstimate } from "../../shared/tariff";
 import { age, clock, distance, isCurrent, money, spaceLevel, stay } from "../format";
-import { NAV_APPS, navigationUrl } from "../navigation";
+import { NAV_APPS, navigationUrl, type NavApp } from "../navigation";
 
 interface Props {
   carpark: NearbyCarpark;
@@ -11,6 +11,8 @@ interface Props {
   durationMinutes: number;
   selected: boolean;
   onSelect: () => void;
+  /** Called when a map app is opened, for the anonymous hand-off count. */
+  onDirections?: (app: NavApp) => void;
   now: number;
 }
 
@@ -92,7 +94,7 @@ function Cost({ estimate, durationMinutes }: { estimate: CostEstimate; durationM
   );
 }
 
-export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, now }: Props) {
+export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, now }: Props) {
   const [open, setOpen] = useState(false);
   const source = carpark.source ?? "hdb";
   const tags = source === "osm" ? [
@@ -135,7 +137,7 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
           <summary className="button button-primary">Directions</summary>
           <div className="directions-menu">
             {NAV_APPS.map((app) => (
-              <a key={app.id} className="button" href={navigationUrl(app.id, carpark)} target="_blank" rel="noopener noreferrer">
+              <a key={app.id} className="button" href={navigationUrl(app.id, carpark)} target="_blank" rel="noopener noreferrer" onClick={() => onDirections?.(app.id)}>
                 {app.label}
               </a>
             ))}

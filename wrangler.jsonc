@@ -20,9 +20,15 @@
   // Deploying with this creates the parkwhere.bijan.app DNS record and certificate on the bijan.app zone.
   "routes": [{ "pattern": "parkwhere.bijan.app", "custom_domain": true }],
   // Per-visitor limit on /api/search, which proxies OneMap once credentials are set.
-  "ratelimits": [{ "name": "SEARCH_LIMITER", "namespace_id": "4201", "simple": { "limit": 30, "period": 60 } }],
+  "ratelimits": [
+    { "name": "SEARCH_LIMITER", "namespace_id": "4201", "simple": { "limit": 30, "period": 60 } },
+    { "name": "EVENT_LIMITER", "namespace_id": "4203", "simple": { "limit": 60, "period": 60 } }
+  ],
+  // Anonymous usage counts (shared/usage.ts). Staging writes to its own dataset; PR previews have none.
+  "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "parkwhere_events" }],
   "workers_dev": false,
-  "observability": { "enabled": true },
+  // Query strings are left out of logs: they hold exact coordinates and search text.
+  "observability": { "enabled": true, "redact_query_string": true },
   // Secrets (never commit): ONEMAP_EMAIL, ONEMAP_PASSWORD, LTA_DATAMALL_ACCOUNT_KEY, optional DATA_GOV_SG_API_KEY.
 
   "env": {
@@ -40,10 +46,14 @@
         }
       ],
       "routes": [{ "pattern": "parkwhere-staging.bijan.app", "custom_domain": true }],
-      "ratelimits": [{ "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } }],
+      "ratelimits": [
+        { "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
+        { "name": "EVENT_LIMITER", "namespace_id": "4204", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "parkwhere_staging_events" }],
       "workers_dev": true,
       "preview_urls": true,
-      "observability": { "enabled": true }
+      "observability": { "enabled": true, "redact_query_string": true }
     }
   }
 }
