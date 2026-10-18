@@ -1,0 +1,76 @@
+// Fetching LTA DataMall's CarParkAvailabilityv2. It pages 500 rows at a time with $skip; the page
+// size "may be adjusted from time to time", so paging stops at the first empty page, not a short one.
+import { Effect, Schedule, Schema } from "effect";
+import type { LtaSnapshot } from "../shared/domain";
+import { normaliseLta } from "../shared/lta";
+import { UpstreamError, type Fetcher } from "./upstream";
+
+export const LTA_URL = "https://datamall2.mytransport.sg/ltaodataservice/CarParkAvailabilityv2";
+const ATTEMPT_TIMEOUT_MS = 8_000;
+/**
+ * The whole paged fetch, retries included, must finish inside this budget: shorter than the 30 s
+ * refresh claim (CLAIM_MS) and the ~30 s a Worker may keep running after its response, so a slow
+ * LTA fails cleanly and records why instead of being cut off mid-write.
+ */
+export const LTA_BUDGET_MS = 20_000;
+/**
+ * Guards against a runaway loop without assuming LTA's page size (500 today, "may be adjusted"):
+ * the time budget bounds the loop too. Today's feed is about 2,600 rows.
+ */
+const MAX_ROWS = 20_000;
+const MAX_REQUESTS = 60;
+
+const Page = Schema.Struct({ value: Schema.Array(Schema.Unknown) });
+
+const outOfTime = () => new UpstreamError({ message: "LTA DataMall is too slow to respond", retryable: false });
+
+const page = (fetcher: Fetcher, accountKey: string, skip: number, deadline: number) =>
+  Effect.tryPromise({
+    try: async () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw outOfTime();
+      const response = await fetcher(`${LTA_URL}?$skip=${skip}`, {
+        headers: { AccountKey: accountKey, accept: "application/json" },
+        signal: AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, remaining))
+      });
+      if (!response.ok) {
+        throw new UpstreamError({
+          message: response.status === 401 || response.status === 403 ? "LTA DataMall refused the account key" : `LTA DataMall returned HTTP ${response.status}`,
+          retryable: response.status === 429 || response.status >= 500
+        });
+      }
+      return (await response.json()) as unknown;
+    },
+    catch: (cause) =>
+      cause instanceof UpstreamError
+        ? cause
+        : new UpstreamError({
+            message: cause instanceof Error && cause.name === "TimeoutError" ? "LTA DataMall did not respond in time" : "Could not reach LTA DataMall",
+            retryable: true
+          })
+  }).pipe(
+    Effect.retry({ schedule: Schedule.exponential("400 millis"), times: 2, while: (error) => error.retryable }),
+    Effect.flatMap((body) =>
+      Schema.decodeUnknownEffect(Page)(body).pipe(
+        Effect.mapError(() => new UpstreamError({ message: "LTA DataMall returned an unexpected format", retryable: false }))
+      )
+    ),
+    Effect.map((decoded) => decoded.value)
+  );
+
+/** Fetches every page and keeps the LTA and URA car rows. */
+export const fetchLta = (fetcher: Fetcher, accountKey: string, now: () => Date = () => new Date(), budgetMs = LTA_BUDGET_MS) =>
+  Effect.gen(function* () {
+    const deadline = Date.now() + budgetMs;
+    const rows: unknown[] = [];
+    for (let request = 0; request < MAX_REQUESTS && rows.length <= MAX_ROWS; request += 1) {
+      const batch = yield* page(fetcher, accountKey, rows.length, deadline);
+      if (batch.length === 0) {
+        const snapshot: LtaSnapshot = normaliseLta(rows, now());
+        if (snapshot.carparks.length === 0) return yield* Effect.fail(new UpstreamError({ message: "LTA DataMall returned no carparks", retryable: false }));
+        return snapshot;
+      }
+      rows.push(...batch);
+    }
+    return yield* Effect.fail(new UpstreamError({ message: "LTA DataMall returned more pages than expected", retryable: false }));
+  });

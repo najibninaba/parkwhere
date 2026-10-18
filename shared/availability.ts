@@ -77,10 +77,10 @@ export function recordFreshness(recordedAt: string | null, now: Date): RecordFre
 export function carAvailability(snapshot: AvailabilitySnapshot | null, carparkId: string, now: Date): CarAvailability {
   const lots = snapshot?.carparks[carparkId];
   const car = lots?.C;
-  if (!car) return { state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" };
+  if (!car) return { reportedBy: "HDB", state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" };
   const freshness = recordFreshness(car.recordedAt, now);
-  if (car.available === null) return { state: "unknown", available: null, total: car.total, recordedAt: car.recordedAt, freshness };
-  return { state: "known", available: car.available, total: car.total, recordedAt: car.recordedAt, freshness };
+  if (car.available === null) return { reportedBy: "HDB", state: "unknown", available: null, total: car.total, recordedAt: car.recordedAt, freshness };
+  return { reportedBy: "HDB", state: "known", available: car.available, total: car.total, recordedAt: car.recordedAt, freshness };
 }
 
 export interface StoredStatus {
@@ -90,7 +90,7 @@ export interface StoredStatus {
 }
 
 /** Feed status for the response. A failed refresh is always reported, even when a snapshot is served. */
-export function feedStatus(snapshot: AvailabilitySnapshot | null, status: StoredStatus, now: Date): FeedStatus {
+export function feedStatus(snapshot: { fetchedAt: string; feedTimestamp?: string | null } | null, status: StoredStatus, now: Date): FeedStatus {
   if (!snapshot) {
     return { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: status.lastError, lastAttemptAt: status.lastAttemptAt };
   }
@@ -100,7 +100,7 @@ export function feedStatus(snapshot: AvailabilitySnapshot | null, status: Stored
   return {
     state: live ? "live" : "last-good",
     fetchedAt: snapshot.fetchedAt,
-    feedTimestamp: snapshot.feedTimestamp,
+    feedTimestamp: snapshot.feedTimestamp ?? null,
     refreshError: lastAttemptFailed ? status.lastError : null,
     lastAttemptAt: status.lastAttemptAt
   };

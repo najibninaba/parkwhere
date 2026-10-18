@@ -35,6 +35,19 @@ function Spaces({ carpark, now }: { carpark: NearbyCarpark; now: number }) {
       </div>
     );
   }
+  if (car.reportedBy === "LTA") {
+    // LTA DataMall gives a count with no time and no total, so it's shown as reported and never as "now".
+    return (
+      <div className={`spaces spaces-${level}`}>
+        <span className="spaces-count">{car.available}</span>
+        <span className="spaces-meta">
+          car lots free, as reported
+          <br />
+          LTA gives no time or total
+        </span>
+      </div>
+    );
+  }
   const current = isCurrent(car, now);
   const label = current
     ? car.available === 0
@@ -76,7 +89,8 @@ function Cost({ estimate, durationMinutes }: { estimate: CostEstimate; durationM
 
 export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, now }: Props) {
   const [open, setOpen] = useState(false);
-  const tags = [
+  const source = carpark.source ?? "hdb";
+  const tags = source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
     CENTRAL_AREA_CARPARKS.has(carpark.id) ? "Central Area" : null,
     carpark.parkingSystem === "COUPON PARKING" ? "Coupon" : null,
     carpark.freeParking !== "NO" ? `Free ${carpark.freeParking.replace("SUN & PH FR ", "Sun & PH ").toLowerCase()}` : null,
@@ -84,6 +98,7 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
     carpark.shortTermParking !== "WHOLE DAY" ? `Short-term ${carpark.shortTermParking.toLowerCase()}` : null,
     carpark.gantryHeightM ? `Gantry ${carpark.gantryHeightM} m` : null
   ].filter((tag): tag is string => Boolean(tag));
+  const sub = source === "hdb" ? `${carpark.id} · ${distance(carpark.distanceM)} away · ${title(carpark.carparkType)}` : `${distance(carpark.distanceM)} away · ${carpark.carparkType}`;
 
   return (
     <li className={`card${selected ? " card-selected" : ""}`} id={`carpark-${carpark.id}`}>
@@ -92,7 +107,7 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
         <span className="card-head">
           <span className="card-name">{title(carpark.address)}</span>
           <span className="card-sub">
-            {carpark.id} · {distance(carpark.distanceM)} away · {title(carpark.carparkType)}
+            {sub}
           </span>
         </span>
       </button>
@@ -128,9 +143,11 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
                   {line.label}: {money(line.cents)}
                 </p>
               ))}
-            <p className="hint">
-              Source: <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a>
-            </p>
+            {source === "hdb" && (
+              <p className="hint">
+                Source: <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a>
+              </p>
+            )}
           </div>
         </details>
       </div>

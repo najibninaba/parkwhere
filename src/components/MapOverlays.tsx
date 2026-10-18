@@ -10,6 +10,15 @@ export function overviewIsCurrent(overview: OverviewResponse | null, now: number
   return now - new Date(overview.feed.fetchedAt).getTime() <= FEED_LIVE_MS;
 }
 
+/** Extra wording when the LTA feed behind the mall and URA dots is failing or out of date. */
+function ltaNote(overview: OverviewResponse): string {
+  const lta = overview.lta;
+  if (!lta) return "";
+  if (lta.state === "unavailable") return " · mall and URA carparks unavailable";
+  if (lta.state === "last-good" || lta.refreshError) return " · mall and URA data out of date";
+  return "";
+}
+
 /** One honest sentence about the live data behind the landing map. */
 export function LiveLine({ overview, failed, now }: { overview: OverviewResponse | null; failed: boolean; now: number }) {
   if (!overview && failed) {
@@ -34,7 +43,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
     return (
       <p className="map-chip map-live">
         <span className="live-dot live-dot-off" aria-hidden="true" />
-        Live counts unavailable. Carparks are still shown.
+        Live counts unavailable. Carparks are still shown.{ltaNote(overview)}
       </p>
     );
   }
@@ -49,6 +58,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
             {" "}
             · last updated {age(feed.fetchedAt, now)}
             {feed.refreshError || failed ? " · refresh failed" : ""}
+            {ltaNote(overview)}
           </span>
         </span>
       </p>
@@ -61,7 +71,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
         <span className="live-dot live-dot-off" aria-hidden="true" />
         <span>
           <strong className="num">{count.format(counts.withSpaces)}</strong> HDB carparks had car spaces {age(feed.fetchedAt, now)}
-          <span className="map-chip-meta"> · latest refresh failed</span>
+          <span className="map-chip-meta"> · latest refresh failed{ltaNote(overview)}</span>
         </span>
       </p>
     );
@@ -74,6 +84,7 @@ export function LiveLine({ overview, failed, now }: { overview: OverviewResponse
         <span className="map-chip-meta">
           {" "}
           · {count.format(counts.reporting)} reported in the last 15 min · updated {age(feed.fetchedAt, now)}
+          {ltaNote(overview)}
         </span>
       </span>
     </p>

@@ -33,7 +33,7 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
           <dd>Google Maps, Apple Maps or Waze, to the carpark’s mapped location.</dd>
         </div>
       </dl>
-      <p className="hint">Covers HDB carparks across Singapore.</p>
+      <p className="hint">Covers HDB carparks across Singapore, plus the mall and URA carparks that report live counts to LTA. Mall and URA prices aren’t estimated yet.</p>
     </section>
   );
 }

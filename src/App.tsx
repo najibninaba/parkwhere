@@ -13,7 +13,7 @@ import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { PlanBar, type SortKey } from "./components/PlanBar";
 import { SearchBox, type Destination } from "./components/SearchBox";
-import { age, distance, feedSentence, isCurrent, lotTypeNote } from "./format";
+import { age, distance, feedSentence, isCurrent, lotTypeNote, ltaSentence } from "./format";
 
 const ParkMap = lazy(() => import("./components/ParkMap"));
 const REFRESH_MS = 60_000;
@@ -53,7 +53,7 @@ function previousFor(load: Load, key: string): Previous | null {
 }
 
 const feedStateAnnouncement = (state: NearbyResponse["feed"]["state"]) =>
-  state === "live" ? "Live spaces are current." : state === "last-good" ? "Live spaces may be out of date." : "Live spaces are unavailable.";
+  state === "live" ? "HDB counts are up to date." : state === "last-good" ? "HDB counts may be out of date." : "HDB counts are unavailable.";
 
 const rankCost = (estimate: CostEstimate) => (estimate.kind === "estimate" ? estimate.totalCents : Number.POSITIVE_INFINITY);
 
@@ -209,6 +209,11 @@ export default function App() {
   };
 
   const feed = data ? feedSentence(data.feed, now) : null;
+  // LTA's informational line only matters when LTA/URA carparks are listed, but a failing LTA feed is
+  // always reported: without it, missing mall carparks would look like there are none.
+  const hasLta = data?.carparks.some((carpark) => (carpark.source ?? "hdb") !== "hdb") ?? false;
+  const ltaFailing = data?.lta ? data.lta.state !== "live" || data.lta.refreshError !== null : false;
+  const lta = data?.lta && (hasLta || ltaFailing) ? ltaSentence(data.lta, now) : null;
   const padded = data ? data.carparks.length > data.withinRadius : false;
   const capped = data ? data.withinRadius > data.carparks.length : false;
 
@@ -254,7 +259,7 @@ export default function App() {
                 <p className="sr-only" aria-live="polite">
                   {load.kind === "loading" && !data ? "Loading carparks." : ""}
                   {load.kind === "error" ? `Couldn't load carparks: ${load.message}` : ""}
-                  {data ? `${data.carparks.length} carparks listed. ${feedStateAnnouncement(data.feed.state)}` : ""}
+                  {data ? `${data.carparks.length} carparks listed. ${feedStateAnnouncement(data.feed.state)}${data.lta && data.lta.state !== "live" ? " Mall and URA counts are unavailable or out of date." : ""}` : ""}
                 </p>
                 {load.kind === "error" && (
                   <p className="banner banner-bad">
@@ -265,6 +270,7 @@ export default function App() {
                   </p>
                 )}
                 {feed && <p className={`banner banner-${feed.tone}`}>{feed.text}</p>}
+                {lta && <p className={`banner banner-${lta.tone}`}>{lta.text}</p>}
               </div>
 
               {!data && load.kind !== "error" && <CardSkeleton />}
@@ -272,17 +278,17 @@ export default function App() {
               {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
-                    <p className="banner">No HDB carparks with short-term parking within 2 km. HDB carparks are the only ones covered so far.</p>
+                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, and mall and URA carparks that report to LTA.</p>
                   ) : (
                     <>
                       {padded && (
                         <p className="banner banner-warn">
-                          {data.withinRadius === 0 ? "Nothing" : `Only ${data.withinRadius}`} within {distance(data.query.radiusM)}, so the nearest HDB carparks up to 2 km away are included.
+                          {data.withinRadius === 0 ? "Nothing" : `Only ${data.withinRadius}`} within {distance(data.query.radiusM)}, so the nearest carparks up to 2 km away are included.
                         </p>
                       )}
                       {capped && (
                         <p className="banner">
-                          Showing the nearest {data.carparks.length} of {data.withinRadius} HDB carparks within {distance(data.query.radiusM)}. Sorting applies to these {data.carparks.length}.
+                          Showing the nearest {data.carparks.length} of {data.withinRadius} carparks within {distance(data.query.radiusM)}. Sorting applies to these {data.carparks.length}.
                         </p>
                       )}
                       <ol className="list">

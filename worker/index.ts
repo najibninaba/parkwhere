@@ -1,9 +1,10 @@
 import { carAvailability, feedStatus } from "../shared/availability";
-import type { NearbyResponse, OverviewResponse, RegistryFile } from "../shared/domain";
+import type { CarAvailability, NearbyResponse, OverviewResponse, RegistryCarpark, RegistryFile } from "../shared/domain";
 import { levelCode, overviewLevel } from "../shared/levels";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore, nearbyCarparks } from "../shared/nearby";
 import { LOADING_BAYS } from "../shared/tariff";
-import { getFeed, type FeedEnv, type FeedRead } from "./feed";
+import { getFeed, getLtaFeed, type FeedEnv, type FeedRead, type LtaRead } from "./feed";
+import { ltaAvailability, ltaRegistry } from "../shared/lta";
 import registryFile from "./registry.json";
 import { SearchUnavailable, onemapConfigured, search, type SearchEnv } from "./search";
 
@@ -24,6 +25,33 @@ const json = (body: unknown, status = 200, cache = "no-store") =>
 
 const problem = (status: number, message: string) => json({ error: message }, status);
 
+const storeDown = (label: string) => (error: unknown) => {
+  console.error(`ParkWhere ${label} store failed`, error);
+  return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "Availability is temporarily unavailable." } };
+};
+
+/**
+ * Both feeds, read in parallel. A failing store or feed never takes the other down. The result lists
+ * HDB carparks from the registry plus LTA/URA carparks from LTA's last good snapshot, each with
+ * availability looked up in its own source.
+ */
+async function readFeeds(env: Env, ctx: ExecutionContext, now: Date) {
+  const waitUntil = (promise: Promise<unknown>) => ctx.waitUntil(promise);
+  const [hdb, lta] = await Promise.all([
+    getFeed(env, waitUntil).catch(storeDown("HDB")) as Promise<FeedRead>,
+    getLtaFeed(env, waitUntil)?.catch(storeDown("LTA")) as Promise<LtaRead> | undefined
+  ]);
+  const all: RegistryCarpark[] = lta ? [...carparks, ...ltaRegistry(lta.snapshot)] : carparks;
+  const availabilityOf = (carpark: RegistryCarpark): CarAvailability =>
+    (carpark.source ?? "hdb") === "hdb" ? carAvailability(hdb.snapshot, carpark.id, now) : ltaAvailability(lta?.snapshot ?? null, carpark.id);
+  return {
+    all,
+    availabilityOf,
+    hdbStatus: feedStatus(hdb.snapshot, hdb.status, now),
+    ltaStatus: lta ? feedStatus(lta.snapshot, lta.status, now) : null
+  };
+}
+
 async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
@@ -35,14 +63,12 @@ async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
   const radiusM = (RADIUS_OPTIONS_M as readonly number[]).includes(radiusParam) ? radiusParam : DEFAULT_RADIUS_M;
 
   const now = new Date();
-  const feed = await getFeed(env, (promise) => ctx.waitUntil(promise)).catch((error: unknown): FeedRead => {
-    console.error("ParkWhere availability store failed", error);
-    return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "Availability is temporarily unavailable." } };
-  });
-  const result = nearbyCarparks(carparks, feed.snapshot, { lat, lng }, radiusM, now);
+  const feeds = await readFeeds(env, ctx, now);
+  const result = nearbyCarparks(feeds.all, feeds.availabilityOf, { lat, lng }, radiusM);
   const body: NearbyResponse = {
     query: { lat, lng, radiusM },
-    feed: feedStatus(feed.snapshot, feed.status, now),
+    feed: feeds.hdbStatus,
+    lta: feeds.ltaStatus,
     registry: { ...registry.source, count: carparks.length },
     withinRadius: result.withinRadius,
     carparks: result.carparks
@@ -50,28 +76,26 @@ async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
   return json(body);
 }
 
-/** Every short-term HDB carpark as a coloured dot, for the landing map. */
+/**
+ * Every short-term carpark as a dot for the landing map. Only HDB counts recorded in the last 15
+ * minutes are coloured or counted as "reporting"; LTA/URA counts have no time, so their dots are grey.
+ */
 async function overview(env: Env, ctx: ExecutionContext): Promise<Response> {
   const now = new Date();
-  const feed = await getFeed(env, (promise) => ctx.waitUntil(promise)).catch((error: unknown): FeedRead => {
-    console.error("ParkWhere availability store failed", error);
-    return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "Availability is temporarily unavailable." } };
-  });
+  const feeds = await readFeeds(env, ctx, now);
   let reporting = 0;
   let withSpaces = 0;
   const points: OverviewResponse["points"] = [];
-  for (const carpark of carparks) {
+  for (const carpark of feeds.all) {
     if (carpark.shortTermParking === "NO") continue;
-    const car = carAvailability(feed.snapshot, carpark.id, now);
-    const level = overviewLevel(car, now.getTime());
-    // Same rule as the dot colours: only counts recorded in the last 15 minutes are "reporting" now.
+    const level = overviewLevel(feeds.availabilityOf(carpark), now.getTime());
     if (level !== "unknown") {
       reporting += 1;
       if (level !== "full") withSpaces += 1;
     }
     points.push([Number(carpark.lat.toFixed(5)), Number(carpark.lng.toFixed(5)), levelCode(level)]);
   }
-  const body: OverviewResponse = { feed: feedStatus(feed.snapshot, feed.status, now), counts: { carparks: points.length, reporting, withSpaces }, points };
+  const body: OverviewResponse = { feed: feeds.hdbStatus, lta: feeds.ltaStatus, counts: { carparks: points.length, reporting, withSpaces }, points };
   return json(body, 200, "public, max-age=30");
 }
 
@@ -92,12 +116,18 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
 
 async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
   const now = new Date();
-  const feed = await getFeed(env, (promise) => ctx.waitUntil(promise));
+  const waitUntil = (promise: Promise<unknown>) => ctx.waitUntil(promise);
+  const [feed, lta] = await Promise.all([
+    getFeed(env, waitUntil).catch(storeDown("HDB")) as Promise<FeedRead>,
+    getLtaFeed(env, waitUntil)?.catch(storeDown("LTA")) as Promise<LtaRead> | undefined
+  ]);
   const status = feedStatus(feed.snapshot, feed.status, now);
   return json(
     {
+      // Health follows the HDB feed, which the app depends on; LTA is reported but optional.
       ok: status.state === "live",
       feed: status,
+      lta: lta ? feedStatus(lta.snapshot, lta.status, now) : "not configured",
       registryFetchedAt: registry.source.fetchedAt,
       placeSearch: onemapConfigured(env) ? "onemap" : "hdb-registry"
     },

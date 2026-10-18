@@ -25,11 +25,12 @@ function nearby(overrides: Partial<NearbyResponse> = {}): NearbyResponse {
     query: { lat: 1.3011, lng: 103.8541, radiusM: 500 },
     feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
     registry: { datasetId: "d_x", name: "HDB Carpark Information", publisher: "HDB", fetchedAt: "2026-10-18T03:57:35Z", count: 2261 },
+    lta: null,
     withinRadius: 3,
     carparks: [
-      { ...base, id: "K1", address: "BLK 1 KNOWN STREET", distanceM: 120, car: { state: "known", available: 42, total: 100, recordedAt: nowIso(), freshness: "current" } },
-      { ...base, id: "U1", address: "BLK 2 UNKNOWN ROAD", distanceM: 260, car: { state: "unknown", available: null, total: null, recordedAt: "2026-08-03T16:00:00Z", freshness: "stale" } },
-      { ...base, id: "N1", address: "BLK 3 NOFEED AVENUE", distanceM: 410, parkingSystem: "COUPON PARKING", car: { state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" } }
+      { ...base, id: "K1", address: "BLK 1 KNOWN STREET", distanceM: 120, car: { reportedBy: "HDB", state: "known", available: 42, total: 100, recordedAt: nowIso(), freshness: "current" } },
+      { ...base, id: "U1", address: "BLK 2 UNKNOWN ROAD", distanceM: 260, car: { reportedBy: "HDB", state: "unknown", available: null, total: null, recordedAt: "2026-08-03T16:00:00Z", freshness: "stale" } },
+      { ...base, id: "N1", address: "BLK 3 NOFEED AVENUE", distanceM: 410, parkingSystem: "COUPON PARKING", car: { reportedBy: "HDB", state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" } }
     ],
     ...overrides
   };
@@ -44,6 +45,7 @@ beforeEach(() => {
   overviewResponse = () =>
     Response.json({
       feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      lta: null,
       counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
       points: [[1.3, 103.85, 4]]
     });
@@ -103,6 +105,7 @@ describe("ParkWhere app", () => {
     overviewResponse = () =>
       Response.json({
         feed: { state: "last-good", fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() },
+        lta: null,
         counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
         points: []
       });
@@ -127,6 +130,18 @@ describe("ParkWhere app", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("says on the landing map when the LTA feed behind mall and URA dots is failing", async () => {
+    overviewResponse = () =>
+      Response.json({
+        feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+        lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() },
+        counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+        points: []
+      });
+    render(<App />);
+    expect(await screen.findByText(/have car spaces now/)).toHaveTextContent(/mall and URA carparks unavailable/);
   });
 
   it("moves focus to the results heading after a quick pick", async () => {
@@ -190,6 +205,7 @@ describe("ParkWhere app", () => {
   overviewResponse = () =>
     Response.json({
       feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      lta: null,
       counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
       points: [[1.3, 103.85, 4]]
     });
@@ -212,13 +228,54 @@ describe("ParkWhere app", () => {
     nearbyResponse = () =>
       Response.json(
         nearby({
-          carparks: [{ ...base, id: "S1", address: "BLK 9 OLD ROAD", distanceM: 90, car: { state: "known", available: 0, total: 50, recordedAt: "2026-01-01T00:00:00Z", freshness: "stale" } }]
+          carparks: [{ ...base, id: "S1", address: "BLK 9 OLD ROAD", distanceM: 90, car: { reportedBy: "HDB", state: "known", available: 0, total: 50, recordedAt: "2026-01-01T00:00:00Z", freshness: "stale" } }]
         })
       );
     await searchAndChoose();
     const card = (await screen.findByText("Blk 9 Old Road")).closest("li")!;
     expect(within(card).queryByText(/full now/)).not.toBeInTheDocument();
     expect(within(card).getByText(/full when last reported/)).toBeInTheDocument();
+  });
+
+  it("shows LTA counts as reported, with no time, total or price", async () => {
+    nearbyResponse = () =>
+      Response.json(
+        nearby({
+          lta: { state: "live", fetchedAt: nowIso(), feedTimestamp: null, refreshError: null, lastAttemptAt: nowIso() },
+          carparks: [
+            {
+              ...base,
+              source: "lta",
+              id: "lta:1",
+              address: "Suntec City",
+              carparkType: "Mall or development carpark",
+              parkingSystem: "UNKNOWN",
+              shortTermParking: "UNKNOWN",
+              freeParking: "UNKNOWN",
+              nightParking: false,
+              gantryHeightM: null,
+              distanceM: 40,
+              car: { reportedBy: "LTA", state: "known", available: 967, total: null, recordedAt: null, freshness: "unknown" }
+            }
+          ]
+        })
+      );
+    await searchAndChoose();
+    const card = (await screen.findByText("Suntec City")).closest("li")!;
+    expect(within(card).getByText("967")).toBeInTheDocument();
+    expect(within(card).getByText(/car lots free, as reported/)).toBeInTheDocument();
+    expect(within(card).getByText(/LTA gives no time or total/)).toBeInTheDocument();
+    expect(within(card).getByText("No estimate")).toBeInTheDocument();
+    expect(within(card).queryByText(/of /)).not.toBeInTheDocument();
+    expect(screen.getByText(/Mall and URA counts from LTA DataMall, fetched 2 min ago/)).toBeInTheDocument();
+  });
+
+  it("says when LTA is down even if no mall carparks are listed", async () => {
+    nearbyResponse = () => Response.json(nearby({ lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() } }));
+    await searchAndChoose();
+    expect(await screen.findByText(/Mall and URA counts are unavailable: LTA DataMall returned HTTP 503/, { selector: ".banner" })).toBeInTheDocument();
+    expect(screen.getByText(/when it last reported, not a reservation/)).toBeInTheDocument();
+    expect(screen.queryByText(/right now/)).not.toBeInTheDocument();
   });
 
   it("opens directions in external map apps", async () => {
