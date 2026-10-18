@@ -13,6 +13,7 @@
 // area or referrer can't single anyone out (a sampled row can stand for several events).
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 const MIN_ROWS = 3;
 
@@ -156,4 +157,5 @@ ${table(errors, "Server errors by route", total(errors))}
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+// pathToFileURL, so a checkout path with spaces or other escaped characters still matches.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

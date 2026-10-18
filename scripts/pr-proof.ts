@@ -5,8 +5,7 @@
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright-core";
-/** Marks ParkWhere's own checks so the Worker never counts them in the usage numbers. */
-const CHECK_HEADERS = { "x-parkwhere-check": "1" };
+import { CHECK_HEADERS, markAsCheck } from "./check-traffic.ts";
 
 const [baseUrl, outDir = "proof"] = process.argv.slice(2);
 if (!baseUrl) {
@@ -54,7 +53,7 @@ async function capture() {
   try {
     // Phone walkthrough, recorded.
     const videoDir = join(outDir, "video-tmp");
-    const phone = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS,
+    const phone = await browser.newContext({
       viewport: { width: 390, height: 844 },
       deviceScaleFactor: 2,
       isMobile: true,
@@ -63,6 +62,7 @@ async function capture() {
       timezoneId: "Asia/Singapore",
       recordVideo: { dir: videoDir, size: { width: 390, height: 844 } }
     });
+    await markAsCheck(phone);
     const page = await phone.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -97,7 +97,8 @@ async function capture() {
     await rm(videoDir, { recursive: true, force: true });
 
     // Smallest phone.
-    const small = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const small = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await markAsCheck(small);
     const smallPage = await small.newPage();
     await smallPage.goto(`${base}${destination}`, { waitUntil: "networkidle" });
     await smallPage.locator(".card").first().waitFor({ timeout: 20_000 });
@@ -105,7 +106,8 @@ async function capture() {
     await small.close();
 
     // Desktop.
-    const desktop = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, viewport: { width: 1280, height: 860 }, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    const desktop = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    await markAsCheck(desktop);
     const desktopPage = await desktop.newPage();
     await desktopPage.goto(`${base}${destination}`, { waitUntil: "networkidle" });
     await desktopPage.locator(".card").first().waitFor({ timeout: 20_000 });

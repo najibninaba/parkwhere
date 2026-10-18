@@ -4,8 +4,7 @@
 //   pnpm check:mobile [baseUrl]
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright-core";
-/** Marks ParkWhere's own checks so the Worker never counts them in the usage numbers. */
-const CHECK_HEADERS = { "x-parkwhere-check": "1" };
+import { markAsCheck } from "./check-traffic.ts";
 
 const base = process.argv[2] ?? "http://localhost:5173";
 const out = new URL("../screenshots/", import.meta.url);
@@ -21,7 +20,8 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 let failures = 0;
 try {
   for (const device of devices) {
-    const context = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, viewport: { width: device.width, height: device.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    const context = await browser.newContext({ viewport: { width: device.width, height: device.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "en-SG", timezoneId: "Asia/Singapore" });
+    await markAsCheck(context);
     const page = await context.newPage();
     // Right after a deploy the first load can be slow; allow 30 s and one reload before failing.
     await page.goto(base + path, { waitUntil: "networkidle" });
