@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ParkWhere delivery pipeline</title>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,800&family=IBM+Plex+Mono:wght@500;600&family=Schibsted+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    /* ParkWhere skin for Diagram Design: paper, ink, bay-blue accent from src/index.css. */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #f5f0e5; --ink: #151412; --muted: #5c5850; --accent: #1f47c4;
+      --sans: 'Schibsted Grotesk', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, monospace; --display: 'Archivo', system-ui, sans-serif;
+    }
+    body { font-family: var(--sans); background: var(--paper); color: var(--ink); padding: 2.5rem 2rem; }
+    .frame { max-width: 1000px; margin: 0 auto; }
+    .eyebrow { font-family: var(--mono); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--display); font-weight: 800; font-variation-settings: "wdth" 112; font-size: 1.9rem; letter-spacing: -0.02em; margin-bottom: 1.25rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Swimlane · ParkWhere</p>
+    <h1>From pull request to production</h1>
+    <div class="diagram-container">
+      <svg id="diagram" viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pipeline-title pipeline-desc">
+        <title id="pipeline-title">From pull request to production</title>
+        <desc id="pipeline-desc">Each pull request is checked, uploaded as a staging preview, captured as proof by its own code without secrets, and published into its description; after a merge, main is checked, deployed to staging and checked there, and only then deployed to production.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#5c5850"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1f47c4"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#f5f0e5"/>
+
+        <!-- Lanes -->
+        <line x1="24" y1="40" x2="936" y2="40" stroke="rgba(21,20,18,0.12)" stroke-width="0.8"/>
+        <line x1="24" y1="196" x2="936" y2="196" stroke="rgba(21,20,18,0.12)" stroke-width="0.8"/>
+        <line x1="24" y1="352" x2="936" y2="352" stroke="rgba(21,20,18,0.12)" stroke-width="0.8"/>
+        <text x="32" y="112" fill="#5c5850" font-size="8" font-family="IBM Plex Mono, monospace" font-weight="600" letter-spacing="0.14em">PULL</text>
+        <text x="32" y="124" fill="#5c5850" font-size="8" font-family="IBM Plex Mono, monospace" font-weight="600" letter-spacing="0.14em">REQUEST</text>
+        <text x="32" y="276" fill="#5c5850" font-size="8" font-family="IBM Plex Mono, monospace" font-weight="600" letter-spacing="0.14em">MAIN</text>
+
+        <!-- Arrows (drawn before nodes) -->
+        <line x1="296" y1="116" x2="328" y2="116" stroke="#5c5850" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="504" y1="116" x2="536" y2="116" stroke="#5c5850" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="712" y1="116" x2="744" y2="116" stroke="#5c5850" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- merge: from publish proof down the gap between lanes to main's check -->
+        <path d="M 832,156 V 200 Q 832,208 824,208 H 220 Q 212,208 212,216 V 236" fill="none" stroke="#5c5850" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <rect x="488" y="188" width="104" height="12" rx="2" fill="#f5f0e5"/>
+        <text x="540" y="197" fill="#5c5850" font-size="8" font-family="IBM Plex Mono, monospace" text-anchor="middle" letter-spacing="0.06em">REVIEW, MERGE</text>
+        <line x1="296" y1="280" x2="328" y2="280" stroke="#5c5850" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="504" y1="280" x2="584" y2="280" stroke="#1f47c4" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <rect x="514" y="256" width="60" height="12" rx="2" fill="#f5f0e5"/>
+        <text x="544" y="265" fill="#1f47c4" font-size="8" font-family="IBM Plex Mono, monospace" font-weight="600" text-anchor="middle" letter-spacing="0.06em">IF GREEN</text>
+
+        <!-- PR lane nodes -->
+        <rect x="128" y="76" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="128" y="76" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="212" y="108" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Check and build</text>
+        <text x="212" y="124" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">typecheck, tests</text>
+        <text x="212" y="138" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">staging build</text>
+
+        <rect x="336" y="76" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="336" y="76" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="420" y="108" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Upload preview</text>
+        <text x="420" y="124" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">pr-N alias on staging</text>
+        <text x="420" y="138" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">trusted config, no PR code</text>
+
+        <rect x="544" y="76" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="544" y="76" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="628" y="108" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Capture proof</text>
+        <text x="628" y="124" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">screenshots, walkthrough</text>
+        <text x="628" y="138" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">PR code, no secrets</text>
+
+        <rect x="752" y="76" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="752" y="76" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="836" y="108" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Publish proof</text>
+        <text x="836" y="124" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">into the PR description</text>
+        <text x="836" y="138" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">runs no repo code</text>
+
+        <!-- main lane nodes -->
+        <rect x="128" y="240" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="128" y="240" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="212" y="272" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Check</text>
+        <text x="212" y="288" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">typecheck, tests</text>
+        <text x="212" y="302" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">main branch only</text>
+
+        <rect x="336" y="240" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="336" y="240" width="168" height="80" rx="6" fill="#e6ebf7" stroke="#1f47c4" stroke-width="1.4"/>
+        <text x="420" y="272" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Deploy staging</text>
+        <text x="420" y="288" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">API smoke test</text>
+        <text x="420" y="302" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">phone layout check</text>
+
+        <rect x="592" y="240" width="168" height="80" rx="6" fill="#f5f0e5"/>
+        <rect x="592" y="240" width="168" height="80" rx="6" fill="#fffdf8" stroke="#151412" stroke-width="1"/>
+        <text x="676" y="272" fill="#151412" font-size="12" font-weight="600" font-family="Schibsted Grotesk, system-ui, sans-serif" text-anchor="middle">Deploy production</text>
+        <text x="676" y="288" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">same checks again</text>
+        <text x="676" y="302" fill="#5c5850" font-size="9" font-family="IBM Plex Mono, monospace" text-anchor="middle">parkwhere.bijan.app</text>
+
+        <!-- Legend -->
+        <text x="24" y="392" fill="#5c5850" font-size="8" font-family="IBM Plex Mono, monospace" font-weight="600" letter-spacing="0.14em">LEGEND</text>
+        <line x1="100" y1="389" x2="132" y2="389" stroke="#5c5850" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="140" y="392" fill="#151412" font-size="9" font-family="Schibsted Grotesk, system-ui, sans-serif">GitHub Actions job order</text>
+        <line x1="300" y1="389" x2="332" y2="389" stroke="#1f47c4" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+        <text x="340" y="392" fill="#151412" font-size="9" font-family="Schibsted Grotesk, system-ui, sans-serif">Production waits for staging to pass</text>
+        <line x1="540" y1="389" x2="572" y2="389" stroke="#5c5850" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="580" y="392" fill="#151412" font-size="9" font-family="Schibsted Grotesk, system-ui, sans-serif">A person reviews and merges</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
