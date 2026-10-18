@@ -36,10 +36,17 @@ function nearby(overrides: Partial<NearbyResponse> = {}): NearbyResponse {
 }
 
 let nearbyResponse: () => Response;
+let overviewResponse: () => Response;
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   nearbyResponse = () => Response.json(nearby());
+  overviewResponse = () =>
+    Response.json({
+      feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+      points: [[1.3, 103.85, 4]]
+    });
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -53,13 +60,7 @@ beforeEach(() => {
         });
       }
       if (url.startsWith("/api/nearby")) return nearbyResponse();
-      if (url.startsWith("/api/overview")) {
-        return Response.json({
-          feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
-          counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
-          points: [[1.3, 103.85, 4]]
-        });
-      }
+      if (url.startsWith("/api/overview")) return overviewResponse();
       return new Response("not found", { status: 404 });
     })
   );
@@ -95,7 +96,30 @@ describe("ParkWhere app", () => {
 
   it("says how many carparks have spaces on the landing map", async () => {
     render(<App />);
-    expect(await screen.findByText(/carparks have car spaces now/)).toHaveTextContent(/1,412 carparks have car spaces now · 1,987 reporting · updated \d min ago/);
+    expect(await screen.findByText(/carparks have car spaces now/)).toHaveTextContent(/1,412 HDB carparks have car spaces now · 1,987 reported in the last 15 min · updated \d min ago/);
+  });
+
+  it("stops claiming 'now' when the overview is out of date, and says when it can't load", async () => {
+    overviewResponse = () =>
+      Response.json({
+        feed: { state: "last-good", fetchedAt: new Date(Date.now() - 40 * 60_000).toISOString(), feedTimestamp: null, refreshError: "data.gov.sg returned HTTP 503", lastAttemptAt: nowIso() },
+        counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+        points: []
+      });
+    const { unmount } = render(<App />);
+    expect(await screen.findByText(/Live counts are out of date/)).toHaveTextContent(/last updated (39|40) min ago · refresh failed/);
+    expect(screen.queryByText(/have car spaces now/)).not.toBeInTheDocument();
+    unmount();
+    overviewResponse = () => Response.json({ error: "down" }, { status: 503 });
+    render(<App />);
+    expect(await screen.findByText(/Couldn't load live counts/)).toBeInTheDocument();
+  });
+
+  it("moves focus to the results heading after a quick pick", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Bugis" }));
+    expect(screen.getByRole("heading", { name: /Parking near Bugis Junction/ })).toHaveFocus();
   });
 
   it("goes back to the landing page with Clear", async () => {
@@ -149,6 +173,12 @@ describe("ParkWhere app", () => {
     const user = await searchAndChoose();
     expect(await screen.findByText(/Something went wrong on our side/, { selector: ".banner" })).toBeInTheDocument();
     nearbyResponse = () => Response.json(nearby());
+  overviewResponse = () =>
+    Response.json({
+      feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+      counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+      points: [[1.3, 103.85, 4]]
+    });
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(await screen.findByText("Blk 1 Known Street")).toBeInTheDocument();
   });

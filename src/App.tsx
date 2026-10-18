@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NearbyCarpark, NearbyResponse, OverviewResponse } from "../shared/domain";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore } from "../shared/nearby";
 import { parseSgtLocal, toSgtLocal } from "../shared/sgt";
@@ -8,7 +8,7 @@ import { withTimeout } from "./timeout";
 import { CardSkeleton } from "./components/CardSkeleton";
 import { CarparkCard } from "./components/CarparkCard";
 import { Landing } from "./components/Landing";
-import { LiveLine, MapLegend } from "./components/MapOverlays";
+import { LiveLine, MapLegend, overviewIsCurrent } from "./components/MapOverlays";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { PlanBar, type SortKey } from "./components/PlanBar";
@@ -68,14 +68,21 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   const [reloadKey, setReloadKey] = useState(0);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewFailed, setOverviewFailed] = useState(false);
 
-  // Every carpark for the map, refreshed while the page is visible. Failure just leaves the dots out.
+  // Every carpark for the map, refreshed while the page is visible. A failure is shown, and old
+  // colours expire (see overviewIsCurrent) rather than staying "live" forever.
   useEffect(() => {
     const controller = new AbortController();
     const run = () =>
       fetchOverview(controller.signal)
-        .then(setOverview)
-        .catch(() => undefined);
+        .then((data) => {
+          setOverview(data);
+          setOverviewFailed(false);
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) setOverviewFailed(true);
+        });
     run();
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") run();
@@ -167,10 +174,22 @@ export default function App() {
     document.getElementById(`carpark-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, []);
 
+  // After a reader picks a place (or clears it), focus moves to the new panel's heading, because the
+  // control they used is gone. Not on first load, where the page should start at the top.
+  const results = useRef<HTMLHeadingElement>(null);
+  const hero = useRef<HTMLHeadingElement>(null);
+  const moveFocus = useRef(false);
+  useEffect(() => {
+    if (!moveFocus.current) return;
+    moveFocus.current = false;
+    (destination ? results.current : hero.current)?.focus({ preventScroll: true });
+  }, [destination]);
+
   const choose = (next: Destination | null) => {
     setSelectedId(null);
+    moveFocus.current = true;
     setDestination(next);
-    if (next) window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const feed = data ? feedSentence(data.feed, now) : null;
@@ -185,6 +204,7 @@ export default function App() {
           <Suspense fallback={<div className="map-frame"><div className="map-skeleton" aria-hidden="true"><span>Loading map…</span></div></div>}>
             <ParkMap
               overview={overview?.points ?? null}
+              overviewCurrent={overviewIsCurrent(overview, now)}
               destination={destination}
               carparks={sortedCarparks}
               radiusM={data?.query.radiusM ?? radiusM}
@@ -193,14 +213,16 @@ export default function App() {
               onSearchArea={(center) => choose({ name: "Map area", ...center })}
             />
           </Suspense>
-          {!destination && <LiveLine overview={overview} now={now} />}
+          {!destination && <LiveLine overview={overview} failed={overviewFailed} now={now} />}
           <MapLegend />
         </div>
 
         <div className="panel">
           {!destination && (
             <div className="hero">
-              <h1>Park near where you’re going.</h1>
+              <h1 ref={hero} tabIndex={-1}>
+                Park near where you’re going.
+              </h1>
               <p>Live HDB car spaces, how fresh each count is, and what your stay will cost, before you arrive.</p>
             </div>
           )}
@@ -211,9 +233,9 @@ export default function App() {
           {destination && (
             <div className="results-panel">
               <div className="destination">
-                <p>
+                <h2 ref={results} tabIndex={-1}>
                   Parking near <strong>{destination.name}</strong>
-                </p>
+                </h2>
                 <button type="button" className="link" onClick={() => choose(null)}>
                   Clear
                 </button>

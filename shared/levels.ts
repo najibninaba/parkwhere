@@ -12,12 +12,17 @@ export const isCurrent = (car: CarAvailability, now: number) => recordFreshness(
  */
 export function spaceLevel(car: CarAvailability, now: number = Date.now()): SpaceLevel {
   if (car.state !== "known" || car.available === null) return "unknown";
-  if (recordFreshness(car.recordedAt, new Date(now)) === "stale") return "unknown";
+  const freshness = recordFreshness(car.recordedAt, new Date(now));
+  // A count with no time, or one over an hour old, can't be coloured as if it were current.
+  if (freshness === "stale" || freshness === "unknown") return "unknown";
   if (car.available === 0) return "full";
   if (car.available < 10) return "few";
   if (car.available < 50) return "some";
   return "plenty";
 }
+
+/** Stricter level for the island overview, which has no room to show each count's age: current counts only. */
+export const overviewLevel = (car: CarAvailability, now: number): SpaceLevel => (isCurrent(car, now) ? spaceLevel(car, now) : "unknown");
 
 /** Compact codes for the overview map payload. */
 export const LEVEL_CODES: readonly SpaceLevel[] = ["unknown", "full", "few", "some", "plenty"];

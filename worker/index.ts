@@ -1,6 +1,6 @@
 import { carAvailability, feedStatus } from "../shared/availability";
 import type { NearbyResponse, OverviewResponse, RegistryFile } from "../shared/domain";
-import { levelCode, spaceLevel } from "../shared/levels";
+import { levelCode, overviewLevel } from "../shared/levels";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore, nearbyCarparks } from "../shared/nearby";
 import { LOADING_BAYS } from "../shared/tariff";
 import { getFeed, type FeedEnv, type FeedRead } from "./feed";
@@ -63,8 +63,8 @@ async function overview(env: Env, ctx: ExecutionContext): Promise<Response> {
   for (const carpark of carparks) {
     if (carpark.shortTermParking === "NO") continue;
     const car = carAvailability(feed.snapshot, carpark.id, now);
-    const level = spaceLevel(car, now.getTime());
-    // Same rule as the dot colours: a count from the last hour. Older or missing counts aren't "reporting".
+    const level = overviewLevel(car, now.getTime());
+    // Same rule as the dot colours: only counts recorded in the last 15 minutes are "reporting" now.
     if (level !== "unknown") {
       reporting += 1;
       if (level !== "full") withSpaces += 1;

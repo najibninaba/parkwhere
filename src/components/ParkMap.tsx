@@ -21,6 +21,8 @@ const LEVEL_COLOURS: Record<string, string> = { plenty: "#1a9e57", some: "#6a9e1
 
 interface Props {
   overview: OverviewResponse["points"] | null;
+  /** False once the overview is out of date: dots turn grey instead of claiming current spaces. */
+  overviewCurrent: boolean;
   destination: Destination | null;
   carparks: NearbyCarpark[];
   radiusM: number;
@@ -33,7 +35,7 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 
 /** On wide screens the panel floats over the left of the map, so fitted views keep clear of it. */
 const fitPadding = (): L.FitBoundsOptions =>
-  window.innerWidth >= 900 ? { paddingTopLeft: [472, 24], paddingBottomRight: [24, 24] } : { padding: [16, 16] };
+  window.innerWidth >= 900 ? { paddingTopLeft: [472, 24], paddingBottomRight: [24, 24] } : { paddingTopLeft: [16, 16], paddingBottomRight: [16, 40] };
 
 /** Dot size grows with zoom, so the island view isn't a blur and street views stay readable. */
 const dotRadius = (zoom: number, faded: boolean) => (faded ? 2.5 : zoom <= 11 ? 2.4 : zoom <= 13 ? 3.2 : 4.5);
@@ -46,7 +48,7 @@ const markerIcon = (rank: number, carpark: NearbyCarpark, selected: boolean) =>
     iconAnchor: [15, 15]
   });
 
-export default function ParkMap({ overview, destination, carparks, radiusM, selectedId, onSelect, onSearchArea }: Props) {
+export default function ParkMap({ overview, overviewCurrent, destination, carparks, radiusM, selectedId, onSelect, onSearchArea }: Props) {
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const dots = useRef<L.LayerGroup | null>(null);
@@ -57,23 +59,34 @@ export default function ParkMap({ overview, destination, carparks, radiusM, sele
   const [tilesReady, setTilesReady] = useState(false);
   const [moved, setMoved] = useState(false);
   const [zoom, setZoom] = useState(11);
+  // Set while the map moves itself, so only a reader's own pan or zoom (mouse, touch or keyboard) offers "Search this area".
+  const programmatic = useRef(false);
 
   useEffect(() => {
     if (!element.current || map.current) return;
     const instance = L.map(element.current, { minZoom: 11, maxZoom: 19, maxBounds: SG_BOUNDS, zoomControl: false, attributionControl: true, preferCanvas: true });
     L.control.zoom({ position: "bottomright" }).addTo(instance);
     instance.attributionControl.setPrefix(false);
+    programmatic.current = true;
     instance.fitBounds(SG_VIEW, { animate: false, ...fitPadding() });
     const tiles = L.tileLayer(ONEMAP_TILES, { detectRetina: true, minZoom: 11, maxZoom: 19, attribution: ONEMAP_ATTRIBUTION });
     tiles.once("load", () => setTilesReady(true));
     tiles.addTo(instance);
     dots.current = L.layerGroup().addTo(instance);
     results.current = L.layerGroup().addTo(instance);
-    // Only a reader's own drag offers "Search this area"; programmatic moves don't.
-    instance.on("dragstart", () => setMoved(true));
+    instance.on("movestart", () => {
+      if (!programmatic.current) setMoved(true);
+    });
+    instance.on("moveend", () => {
+      programmatic.current = false;
+    });
     instance.on("zoomend", () => setZoom(instance.getZoom()));
+    // The pane changes height between landing and results; Leaflet must re-measure before fitting.
+    const resize = new ResizeObserver(() => instance.invalidateSize({ pan: false }));
+    resize.observe(element.current);
     map.current = instance;
     return () => {
+      resize.disconnect();
       instance.remove();
       map.current = null;
     };
@@ -87,7 +100,7 @@ export default function ParkMap({ overview, destination, carparks, radiusM, sele
     if (!overview) return;
     const faded = destination !== null;
     for (const [lat, lng, code] of overview) {
-      const level = LEVEL_CODES[code] ?? "unknown";
+      const level = overviewCurrent ? (LEVEL_CODES[code] ?? "unknown") : "unknown";
       L.circleMarker([lat, lng], {
         radius: dotRadius(zoom, faded),
         stroke: false,
@@ -96,7 +109,7 @@ export default function ParkMap({ overview, destination, carparks, radiusM, sele
         interactive: false
       }).addTo(group);
     }
-  }, [overview, destination, zoom]);
+  }, [overview, overviewCurrent, destination, zoom]);
 
   // Numbered results, redrawn and refitted only when the destination, radius or set of carparks changes,
   // so a reader's own pan and zoom survive the periodic refresh and re-sorting.
@@ -108,10 +121,16 @@ export default function ParkMap({ overview, destination, carparks, radiusM, sele
     group.clearLayers();
     markers.current.clear();
     setMoved(false);
+    current.invalidateSize({ pan: false });
     const animate = !reducedMotion();
+    programmatic.current = true;
+    // A fit that doesn't move the map fires no moveend; don't let the flag outlive the animation.
+    const settle = window.setTimeout(() => {
+      programmatic.current = false;
+    }, 1200);
     if (!destination) {
       current.flyToBounds(SG_VIEW, { animate, duration: 0.8, ...fitPadding() });
-      return;
+      return () => window.clearTimeout(settle);
     }
     L.circle([destination.lat, destination.lng], { radius: radiusM, color: "#151412", weight: 1, dashArray: "4 4", fillOpacity: 0.04, interactive: false }).addTo(group);
     L.marker([destination.lat, destination.lng], {
@@ -127,6 +146,7 @@ export default function ParkMap({ overview, destination, carparks, radiusM, sele
     }
     const bounds = L.latLngBounds([[destination.lat, destination.lng], ...carparks.map((carpark) => [carpark.lat, carpark.lng] as [number, number])]);
     current.flyToBounds(bounds.pad(0.1), { maxZoom: 17, animate, duration: 0.8, ...fitPadding() });
+    return () => window.clearTimeout(settle);
   }, [layoutKey]);
 
   // Ranks, colours and selection change in place.

@@ -203,7 +203,7 @@ p, dd { text-wrap: pretty; }
 .live-dot-off { background: var(--unknown); box-shadow: none; }
 .live-dot-waiting { background: var(--unknown); animation: pulse 1.4s ease-in-out infinite; }
 .map-legend {
-  bottom: 36px;
+  bottom: 52px;
   list-style: none;
   padding: 6px 10px;
   display: flex;
@@ -212,7 +212,7 @@ p, dd { text-wrap: pretty; }
   font-size: 12px;
   color: var(--ink-soft);
 }
-.shell-results .map-legend { bottom: 44px; }
+.shell-results .map-legend { bottom: 52px; }
 @media (max-width: 899px) {
   /* Numbered pins carry their colour; the legend would cover them on a short map. */
   .shell-results .map-legend { display: none; }
@@ -353,7 +353,10 @@ p, dd { text-wrap: pretty; }
 
 /* Plan */
 .results-panel { display: flex; flex-direction: column; gap: 14px; }
-.destination { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; }
+.destination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.destination h2 { font-size: 16px; font-weight: 400; }
+.hero h1:focus, .destination h2:focus { outline: none; }
+.hero h1:focus-visible, .destination h2:focus-visible { outline: 3px solid var(--bay); outline-offset: 4px; }
 .plan { display: flex; flex-direction: column; gap: 12px; }
 .plan-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 15px; padding: 2px 0; border-top: 1px solid var(--paper-line); border-bottom: 1px solid var(--paper-line); }
 .plan-summary .label { margin-right: 6px; }
@@ -528,6 +531,10 @@ p, dd { text-wrap: pretty; }
 .footer p { max-width: 75ch; }
 
 .leaflet-container { font-family: var(--font-body); }
+@media (max-width: 899px) {
+  /* The sheet overlaps the map's bottom 20px; keep OneMap's required attribution and the zoom buttons above it. */
+  .map-pane .leaflet-bottom { bottom: 20px; }
+}
 .leaflet-control-attribution { font-size: 11px; }
 .leaflet-bar a { transition: background-color 120ms var(--ease-out); }
 
