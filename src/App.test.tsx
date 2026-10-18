@@ -87,6 +87,12 @@ describe("ParkWhere app", () => {
     expect(document.querySelector(".card")).toBeNull();
   });
 
+  it("signs the footer as a najibninaba project", () => {
+    render(<App />);
+    expect(screen.getByRole("link", { name: "A najibninaba project" })).toHaveAttribute("href", "https://najibninaba.com");
+    expect(screen.getByText("© 2026 Najib Ninaba")).toBeInTheDocument();
+  });
+
   it("starts a search from a quick pick", async () => {
     const user = userEvent.setup();
     render(<App />);

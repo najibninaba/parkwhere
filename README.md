@@ -148,6 +148,8 @@ ParkWhere contains information from Carpark Availability and HDB Carpark Informa
 
 LTA's API terms allow commercial use with attribution and require keys to be kept on the server. ParkWhere keeps its key on the server and keeps only the last minute's copy of the data.
 
-Maps are © OneMap contributors and the Singapore Land Authority. Fonts are Archivo, Schibsted Grotesk and IBM Plex Mono, all under the SIL Open Font License.
+Maps are © OneMap contributors and the Singapore Land Authority. Fonts are Archivo, Schibsted Grotesk, IBM Plex Mono and Libre Caslon Text, all under the SIL Open Font License.
 
 ParkWhere is an independent project. It isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.
+
+ParkWhere is a [najibninaba](https://najibninaba.com) project. © 2026 Najib Ninaba.
