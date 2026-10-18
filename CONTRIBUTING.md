@@ -39,10 +39,12 @@ Dependencies are updated by hand; Dependabot alerts are on, but it doesn't open 
 
    ```sh
    pnpm outdated
-   pnpm audit --prod
+   pnpm audit
    ```
 
-2. Update with exact versions, for example `pnpm add -D vite@8.4.0` or `pnpm add effect@4.1.0`. Patch and minor updates can share one pull request. Take major versions one at a time, and read the release notes first.
+   `pnpm audit` covers `devDependencies` too, which matter here because Vite, Wrangler and `vite-plugin-pwa` build and ship the app. Add `--prod` to see only what runs in production.
+
+2. Update with exact versions, for example `pnpm add -D --save-exact vite@8.4.0` or `pnpm add --save-exact effect@4.1.0`. Without `--save-exact`, pnpm saves a `^` range. Patch and minor updates can share one pull request. Take major versions one at a time, and read the release notes first.
 3. Run `pnpm check`, then `pnpm check:mobile` with `pnpm dev` running. Open a pull request, and the preview and proof show the app still works.
 
 Things to watch:
