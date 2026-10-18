@@ -13,7 +13,7 @@ import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { PlanBar, type SortKey } from "./components/PlanBar";
 import { SearchBox, type Destination } from "./components/SearchBox";
-import { age, distance, feedSentence, isCurrent, lotTypeNote } from "./format";
+import { age, distance, feedSentence, isCurrent, lotTypeNote, ltaSentence } from "./format";
 
 const ParkMap = lazy(() => import("./components/ParkMap"));
 const REFRESH_MS = 60_000;
@@ -209,6 +209,7 @@ export default function App() {
   };
 
   const feed = data ? feedSentence(data.feed, now) : null;
+  const lta = data?.lta && data.carparks.some((carpark) => (carpark.source ?? "hdb") !== "hdb") ? ltaSentence(data.lta, now) : null;
   const padded = data ? data.carparks.length > data.withinRadius : false;
   const capped = data ? data.withinRadius > data.carparks.length : false;
 
@@ -265,6 +266,7 @@ export default function App() {
                   </p>
                 )}
                 {feed && <p className={`banner banner-${feed.tone}`}>{feed.text}</p>}
+                {lta && <p className={`banner banner-${lta.tone}`}>{lta.text}</p>}
               </div>
 
               {!data && load.kind !== "error" && <CardSkeleton />}
@@ -272,17 +274,17 @@ export default function App() {
               {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
-                    <p className="banner">No HDB carparks with short-term parking within 2 km. HDB carparks are the only ones covered so far.</p>
+                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, and mall and URA carparks that report to LTA.</p>
                   ) : (
                     <>
                       {padded && (
                         <p className="banner banner-warn">
-                          {data.withinRadius === 0 ? "Nothing" : `Only ${data.withinRadius}`} within {distance(data.query.radiusM)}, so the nearest HDB carparks up to 2 km away are included.
+                          {data.withinRadius === 0 ? "Nothing" : `Only ${data.withinRadius}`} within {distance(data.query.radiusM)}, so the nearest carparks up to 2 km away are included.
                         </p>
                       )}
                       {capped && (
                         <p className="banner">
-                          Showing the nearest {data.carparks.length} of {data.withinRadius} HDB carparks within {distance(data.query.radiusM)}. Sorting applies to these {data.carparks.length}.
+                          Showing the nearest {data.carparks.length} of {data.withinRadius} carparks within {distance(data.query.radiusM)}. Sorting applies to these {data.carparks.length}.
                         </p>
                       )}
                       <ol className="list">

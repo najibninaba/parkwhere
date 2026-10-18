@@ -1,6 +1,6 @@
 # ParkWhere
 
-Find an HDB carpark near where you're going in Singapore. ParkWhere shows how many car lots are free, how old each count is and what your stay should cost. Directions open in Google Maps, Apple Maps or Waze.
+Find a carpark near where you're going in Singapore: every HDB carpark, plus the mall and URA carparks that report to LTA. ParkWhere shows how many car lots are free, how old each count is and what your stay should cost. Directions open in Google Maps, Apple Maps or Waze.
 
 The app is one Cloudflare Worker that serves a Vite + React PWA and a small API:
 
@@ -26,6 +26,11 @@ Verify with `pnpm check` (typecheck, tests and build). For the phone check, run 
   - A claim in D1 allows only one refresh every 30 seconds across all isolates.
   - Transient errors are retried twice with backoff.
   - When a refresh fails, the app shows the last good data and says so.
+- **Mall and URA carparks** come from LTA DataMall's [CarParkAvailabilityv2](https://datamall.lta.gov.sg/content/datamall/en/dynamic-data.html), using the `LTA_DATAMALL_ACCOUNT_KEY` Worker secret.
+  - The Worker fetches every page about once a minute and keeps its own last-good snapshot in D1 (`lta_snapshot`, `lta_status`). If LTA fails, HDB results are unaffected, and the reverse holds too.
+  - HDB rows in LTA's feed are dropped. On 2026-10-18, all 1,997 of them matched HDB registry numbers within 100 m, and data.gov.sg's HDB feed has record times and totals.
+  - Only car rows (`LotType` C) from Agency LTA (malls, attractions) and URA (off-street carparks) are kept, about 130 carparks.
+  - LTA gives **no record time and no total**. These counts are labelled "as reported, LTA gives no time or total", drawn grey on the map, ranked after current HDB counts, and never priced ("No estimate: check the rates posted at the entrance").
 - **Carpark locations and attributes** come from the [HDB Carpark Information](https://data.gov.sg/datasets/d_23f946fa557947f93a8043bbef41dd09/view) registry, which is updated monthly.
   - It is bundled as `worker/registry.json`, converted from SVY21 to WGS84.
   - Refresh it with `pnpm registry` and redeploy.
@@ -81,11 +86,12 @@ Previews run the PR's code on the staging Worker, so they can read staging's sec
    ```
 
    You can do the same in GitHub under **Settings → Secrets and variables → Actions → New repository secret**.
-3. **Give staging the app secrets** (optional), so previews and staging use OneMap search too:
+3. **Give staging the app secrets** (optional), so previews and staging use OneMap search and LTA carparks too:
 
    ```sh
    pnpm exec wrangler secret put ONEMAP_EMAIL --env staging
    pnpm exec wrangler secret put ONEMAP_PASSWORD --env staging
+   pnpm exec wrangler secret put LTA_DATAMALL_ACCOUNT_KEY --env staging
    ```
 
 The token can only read D1, so CI never applies migrations. When a PR adds one, apply it before merging:
@@ -96,12 +102,13 @@ The token can only read D1, so CI never applies migrations. When a PR adds one, 
 
 **Rollback:** `pnpm exec wrangler rollback` (add `--env staging` for staging), or revert the PR.
 
-**Worker secrets in production:** `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` (OneMap search), `LTA_DATAMALL_ACCOUNT_KEY` (stored for later; not used yet), and optionally `DATA_GOV_SG_API_KEY`. Set them with `pnpm exec wrangler secret put <NAME>`. For local runs, put them in `.dev.vars`, which git ignores.
+**Worker secrets in production:** `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` (OneMap search), `LTA_DATAMALL_ACCOUNT_KEY` (mall and URA carparks; without it they're left out), and optionally `DATA_GOV_SG_API_KEY`. Set them with `pnpm exec wrangler secret put <NAME>`. For local runs, put them in `.dev.vars`, which git ignores.
 
 ## Not done yet
 
 - Place search needs the OneMap account above. Until then the app searches HDB carpark addresses and says so.
-- Only HDB carparks are covered. Malls and other commercial carparks need LTA DataMall or URA access, which both need keys.
+- Mall and URA carparks have counts but no prices. LTA's only rates dataset ("Carpark Rates" on data.gov.sg) is free text from 2018, and URA's own rates API needs a separate URA access key.
+- LTA's feed only covers carparks that report to it. Other private carparks aren't covered.
 - There are no estimates for coupon carparks, stays during peak-hour windows, or Central Area weekday public holidays.
 - Loading/unloading bays are left out of results.
 - Season-parking-only carparks (`short_term_parking = NO`) are left out.
@@ -112,4 +119,4 @@ The token can only read D1, so CI never applies migrations. When a PR adds one, 
 
 ## Sources and licences
 
-Contains information from Carpark Availability and HDB Carpark Information, accessed from data.gov.sg under the [Singapore Open Data Licence v1.0](https://data.gov.sg/open-data-licence). Maps are © OneMap contributors and the Singapore Land Authority. Charges follow HDB's published short-term parking pages. ParkWhere is not affiliated with HDB, SLA or GovTech.
+Contains information from Carpark Availability and HDB Carpark Information, accessed from data.gov.sg, and from Car Park Availability, accessed from LTA DataMall, all under the [Singapore Open Data Licence v1.0](https://data.gov.sg/open-data-licence). LTA's API terms allow commercial use with attribution and server-held keys. LTA's general website terms also ban caching; we take the API terms as governing API use, keep the key on the server and keep only the last minute's snapshot. Maps are © OneMap contributors and the Singapore Land Authority. Charges follow HDB's published short-term parking pages. ParkWhere is not affiliated with HDB, SLA or GovTech.

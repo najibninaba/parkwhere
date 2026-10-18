@@ -46,4 +46,12 @@ export function feedSentence(feed: FeedStatus, now: number): { tone: "ok" | "war
   return { tone: "ok", text: `HDB data fetched ${age(feed.fetchedAt, now)}.` };
 }
 
+/** The LTA DataMall line, shown when LTA or URA carparks are in the results. */
+export function ltaSentence(lta: FeedStatus, now: number): { tone: "ok" | "warn" | "bad"; text: string } {
+  if (lta.state === "unavailable") return { tone: "bad", text: `Mall and URA counts are unavailable${lta.refreshError ? `: ${lta.refreshError}` : ""}.` };
+  const fetched = `Mall and URA counts from LTA DataMall, fetched ${age(lta.fetchedAt, now)}. LTA doesn't say when each carpark last reported.`;
+  if (lta.state === "last-good") return { tone: "warn", text: `${lta.refreshError ? `Latest LTA refresh failed (${lta.refreshError}). ` : ""}${fetched}` };
+  return { tone: "ok", text: fetched };
+}
+
 export const lotTypeNote = "Counts are car lots free in the whole carpark right now — not a reservation, and not a forecast for when you arrive.";

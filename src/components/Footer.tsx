@@ -14,10 +14,15 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
         <a href="https://data.gov.sg/open-data-licence" target="_blank" rel="noopener noreferrer">Singapore Open Data Licence version 1.0</a>.
       </p>
       <p>
+        Mall and URA carpark counts contain information from{" "}
+        <a href="https://datamall.lta.gov.sg/content/datamall/en/dynamic-data.html" target="_blank" rel="noopener noreferrer">Car Park Availability</a> accessed from LTA DataMall, made available under the terms of the{" "}
+        <a href="https://datamall.lta.gov.sg/content/datamall/en/SingaporeOpenDataLicence.html" target="_blank" rel="noopener noreferrer">Singapore Open Data Licence version 1.0</a>.
+      </p>
+      <p>
         Prices follow <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a> and {HOLIDAYS_SOURCE}. Estimates assume one continuous stay in a regular (non-season) lot; the charge at the gantry is what counts.
       </p>
       <p>
-        Maps © OneMap contributors, Singapore Land Authority. ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, SLA or GovTech.
+        Maps © OneMap contributors, Singapore Land Authority. ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.
       </p>
     </footer>
   );

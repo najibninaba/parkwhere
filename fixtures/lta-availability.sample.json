@@ -1,0 +1,86 @@
+{
+ "odata.metadata": "https://datamall2.mytransport.sg/ltaodataservice/$metadata#CarParkAvailability",
+ "value": [
+  {
+   "CarParkID": "1",
+   "Area": "Marina",
+   "Development": "Suntec City",
+   "Location": "1.29375 103.85718",
+   "AvailableLots": 967,
+   "LotType": "C",
+   "Agency": "LTA"
+  },
+  {
+   "CarParkID": "2",
+   "Area": "Marina",
+   "Development": "Marina Square",
+   "Location": "1.29115 103.85728",
+   "AvailableLots": 547,
+   "LotType": "C",
+   "Agency": "LTA"
+  },
+  {
+   "CarParkID": "3",
+   "Area": "Marina",
+   "Development": "Raffles City",
+   "Location": "1.29382 103.85319",
+   "AvailableLots": 136,
+   "LotType": "C",
+   "Agency": "LTA"
+  },
+  {
+   "CarParkID": "A0007",
+   "Area": "",
+   "Development": "ANGULLIA PARK OFF ST",
+   "Location": "1.3053280313212745 103.82957069514487",
+   "AvailableLots": 0,
+   "LotType": "Y",
+   "Agency": "URA"
+  },
+  {
+   "CarParkID": "A0007",
+   "Area": "",
+   "Development": "ANGULLIA PARK OFF ST",
+   "Location": "1.3053280313212745 103.82957069514487",
+   "AvailableLots": 224,
+   "LotType": "C",
+   "Agency": "URA"
+  },
+  {
+   "CarParkID": "B0031",
+   "Area": "",
+   "Development": "BEATTY RD OFF ST",
+   "Location": "1.31411103114537 103.85960539693774",
+   "AvailableLots": 0,
+   "LotType": "C",
+   "Agency": "URA"
+  },
+  {
+   "CarParkID": "D0030",
+   "Area": "",
+   "Development": "42 DEFU LANE 7 HVP",
+   "Location": "",
+   "AvailableLots": 0,
+   "LotType": "H",
+   "Agency": "URA"
+  },
+  {
+   "CarParkID": "ACB",
+   "Area": "",
+   "Development": "BLK 270/271 ALBERT CENTRE BASEMENT CAR PARK",
+   "Location": "1.301063272086422 103.85411804993097",
+   "AvailableLots": 0,
+   "LotType": "C",
+   "Agency": "HDB"
+  },
+  {
+   "CarParkID": "KB7",
+   "Area": "",
+   "Development": "BLK 69 GEYLANG BAHRU",
+   "Location": "1.3215857813188372 103.87047836388138",
+   "AvailableLots": 11,
+   "LotType": "C",
+   "Agency": "HDB"
+  }
+ ]
+}

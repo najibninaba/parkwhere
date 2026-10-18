@@ -19,13 +19,16 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 
 - `shared/` holds pure domain logic with no I/O. It is imported by both the Worker and the app, and every rule here has a test next to it.
   - `availability.ts`: normalises the feed, rates record freshness and builds the feed status
+  - `lta.ts`: normalises LTA DataMall (LTA and URA car rows only) and its honest availability, with no time and no total
+  - `levels.ts`: dot and count colour levels; the overview only colours current, dated HDB counts
   - `nearby.ts`: distance, radius search and the fallback when nothing is in range
   - `tariff.ts`: HDB charge rules and cost estimates
   - `holidays.ts`, `sgt.ts`, `svy21.ts`: public holidays, Singapore time and coordinate conversion
   - `feed-schema.ts`: Effect Schema for the upstream feed. Only the Worker imports it, which keeps Effect out of the browser bundle.
 - `worker/` is the I/O edge.
   - `upstream.ts`: Effect fetch with retry and typed errors
-  - `feed.ts`: last-good snapshot in D1 and the refresh policy
+  - `feed.ts`: last-good snapshots in D1 and the refresh policy, one store per source (HDB, LTA)
+  - `lta.ts`: paged Effect fetch of LTA DataMall
   - `search.ts`: OneMap search, with HDB registry search as the fallback
   - `index.ts`: routes
 - `src/` is the React UI. `CarparkMap` is lazy-loaded and uses Leaflet with OneMap tiles.
@@ -42,6 +45,7 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 6. Registry coordinates are not entrances. Navigation goes to Google Maps, Apple Maps or Waze with that caveat. Don't build turn-by-turn guidance.
 7. Cost estimates come only from rules HDB publishes (see the header of `shared/tariff.ts`). When a rule is missing or ambiguous (coupon carparks, peak windows, Central Area rates on public holidays, unpublished holiday years), return `unavailable` with the published rate.
 8. Don't add accounts, payments, bookings, AI, predictions, entrance photos or manual walking routes.
+9. LTA DataMall counts have no time and no total. Never colour them as current, never write "now" about them, and never price them. HDB rows from LTA are dropped in favour of data.gov.sg's.
 
 ## External services
 

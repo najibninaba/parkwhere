@@ -1,5 +1,4 @@
-import { carAvailability } from "./availability";
-import type { AvailabilitySnapshot, NearbyCarpark, RegistryCarpark } from "./domain";
+import type { CarAvailability, NearbyCarpark, RegistryCarpark } from "./domain";
 
 const EARTH_RADIUS_M = 6_371_008.8;
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
@@ -32,15 +31,14 @@ export interface NearbyResult {
 }
 
 /**
- * Carparks near a point, nearest first. Each registry carpark appears once; availability
- * is looked up by its exact registry id. Carparks with no short-term parking are left out.
+ * Carparks near a point, nearest first. Each carpark appears once, and `availabilityOf` looks its
+ * availability up by exact id in its own source. Carparks with no short-term parking are left out.
  */
 export function nearbyCarparks(
   registry: readonly RegistryCarpark[],
-  snapshot: AvailabilitySnapshot | null,
+  availabilityOf: (carpark: RegistryCarpark) => CarAvailability,
   origin: { lat: number; lng: number },
-  radiusM: number,
-  now: Date
+  radiusM: number
 ): NearbyResult {
   const ranked = registry
     .filter((carpark) => carpark.shortTermParking !== "NO")
@@ -55,7 +53,7 @@ export function nearbyCarparks(
     carparks: chosen.slice(0, MAX_RESULTS).map(({ carpark, distanceM: distance }) => ({
       ...carpark,
       distanceM: Math.round(distance),
-      car: carAvailability(snapshot, carpark.id, now)
+      car: availabilityOf(carpark)
     }))
   };
 }

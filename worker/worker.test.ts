@@ -1,10 +1,12 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import sample from "../fixtures/hdb-availability.sample.json";
+import ltaSample from "../fixtures/lta-availability.sample.json";
 import type { NearbyResponse, OverviewResponse, SearchResponse } from "../shared/domain";
-import { getFeed, resetFeedMemory } from "./feed";
+import { getFeed, getLtaFeed, resetFeedMemory } from "./feed";
 import worker, { type Env } from "./index";
 import { createTestD1 } from "./test-d1";
+import { LTA_URL } from "./lta";
 import { AVAILABILITY_URL } from "./upstream";
 
 type Step = { status: number; body?: unknown } | "network-error";
@@ -128,6 +130,32 @@ describe("getFeed", () => {
   });
 });
 
+describe("getLtaFeed", () => {
+  it("is off without an account key", () => {
+    expect(getLtaFeed({ DB: createTestD1() }, noWait, scriptedFetch([ok]).fetcher)).toBeNull();
+  });
+
+  it("pages until an empty page and keeps the account key in a header", async () => {
+    const seen: { url: string; key: string | null }[] = [];
+    const pages = [ltaSample.value, []];
+    const fetcher = vi.fn(async (input: string, init?: RequestInit) => {
+      seen.push({ url: input, key: new Headers(init?.headers).get("AccountKey") });
+      return Response.json({ value: pages.shift() ?? [] });
+    });
+    const read = await getLtaFeed({ DB: createTestD1(), LTA_DATAMALL_ACCOUNT_KEY: "test-key" }, noWait, fetcher)!;
+    expect(seen.map((call) => call.url)).toEqual([`${LTA_URL}?$skip=0`, `${LTA_URL}?$skip=9`]);
+    expect(seen.every((call) => call.key === "test-key")).toBe(true);
+    expect(read.snapshot?.carparks.map((carpark) => carpark.key)).toEqual(["lta:1", "lta:2", "lta:3", "ura:A0007", "ura:B0031"]);
+  });
+
+  it("reports a refused key without retrying", async () => {
+    const { fetcher, calls } = scriptedFetch([{ status: 401 }]);
+    const read = await getLtaFeed({ DB: createTestD1(), LTA_DATAMALL_ACCOUNT_KEY: "bad" }, noWait, fetcher)!;
+    expect(calls).toHaveLength(1);
+    expect(read.status.lastError).toBe("LTA DataMall refused the account key");
+  });
+});
+
 describe("Worker routes", () => {
   const ctx = { waitUntil: () => undefined, passThroughOnException: () => undefined } as unknown as ExecutionContext;
   const env = (overrides: Partial<Env> = {}): Env =>
@@ -171,6 +199,33 @@ describe("Worker routes", () => {
       // The fixture holds only a handful of carparks, and its records are hours old by now: none count as current.
       expect(body.counts.withSpaces).toBeLessThanOrEqual(body.counts.reporting);
       expect(body.points.filter(([, , code]) => code !== 0).length).toBe(body.counts.reporting);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("adds LTA and URA carparks next to HDB ones, and keeps them apart when one feed fails", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith(LTA_URL)) return url.endsWith("$skip=0") ? Response.json({ value: ltaSample.value }) : Response.json({ value: [] });
+      return Response.json(sample);
+    }) as typeof fetch;
+    try {
+      const body = (await (await call("/api/nearby?lat=1.29375&lng=103.85718&radius=500", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
+      const suntec = body.carparks.find((carpark) => carpark.id === "lta:1");
+      expect(suntec).toMatchObject({ source: "lta", address: "Suntec City", car: { reportedBy: "LTA", available: 967, total: null, recordedAt: null } });
+      expect(body.lta?.state).toBe("live");
+    } finally {
+      globalThis.fetch = original;
+    }
+    resetFeedMemory();
+    globalThis.fetch = (async (input: RequestInfo | URL) => (String(input).startsWith(LTA_URL) ? new Response("", { status: 503 }) : Response.json(sample))) as typeof fetch;
+    try {
+      const body = (await (await call("/api/nearby?lat=1.30106&lng=103.85412", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as NearbyResponse;
+      expect(body.lta).toMatchObject({ state: "unavailable", refreshError: "LTA DataMall returned HTTP 503" });
+      expect(body.feed.state).not.toBe("unavailable");
+      expect(body.carparks[0].id).toBe("ACB");
     } finally {
       globalThis.fetch = original;
     }

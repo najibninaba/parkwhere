@@ -55,9 +55,13 @@ export type CostEstimate =
   | { kind: "unavailable"; reason: string; publishedRate: string }
   | { kind: "not-allowed"; reason: string; publishedRate: string };
 
-type TariffCarpark = Pick<RegistryCarpark, "id" | "parkingSystem" | "shortTermParking" | "freeParking" | "nightParking">;
+type TariffCarpark = Pick<RegistryCarpark, "source" | "id" | "parkingSystem" | "shortTermParking" | "freeParking" | "nightParking">;
 
-export function publishedRate(carpark: Pick<RegistryCarpark, "id">): string {
+const isHdb = (carpark: Pick<RegistryCarpark, "source">) => (carpark.source ?? "hdb") === "hdb";
+const NOT_COVERED = "Rates for this carpark aren't covered yet. Check the rates posted at the entrance.";
+
+export function publishedRate(carpark: Pick<RegistryCarpark, "source" | "id">): string {
+  if (!isHdb(carpark)) return "Not published here. Rates are posted at the carpark.";
   const base = CENTRAL_AREA_CARPARKS.has(carpark.id)
     ? "$1.20 per half-hour 7am–5pm Mon–Sat, $0.60 per half-hour at other times"
     : "$0.60 per half-hour";
@@ -112,6 +116,7 @@ export function estimateCost(carpark: TariffCarpark, arrival: Date, durationMinu
   const rate = publishedRate(carpark);
   const unavailable = (reason: string): CostEstimate => ({ kind: "unavailable", reason, publishedRate: rate });
 
+  if (!isHdb(carpark)) return unavailable(NOT_COVERED);
   if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > MAX_STAY_MINUTES) {
     return unavailable("Choose a stay between 1 minute and 24 hours.");
   }

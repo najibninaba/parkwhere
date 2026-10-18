@@ -1,7 +1,15 @@
 // Shared types for the Worker API and the app. Keep this file free of runtime dependencies.
 
-/** One HDB carpark from the static registry (data.gov.sg "HDB Carpark Information"). */
+/** Who runs a carpark and where its data comes from. HDB carparks come from data.gov.sg; LTA and URA ones from LTA DataMall. */
+export type CarparkSource = "hdb" | "lta" | "ura";
+
+/**
+ * One carpark. HDB carparks come from the static registry (data.gov.sg "HDB Carpark Information");
+ * LTA and URA carparks are built from the LTA DataMall feed itself and fill HDB-only fields with "UNKNOWN".
+ */
 export interface RegistryCarpark {
+  /** Absent means "hdb", so the bundled registry stays as published. */
+  source?: CarparkSource;
   id: string;
   address: string;
   /** Registry point converted from SVY21. Not necessarily the entrance. */
@@ -67,6 +75,8 @@ export interface FeedStatus {
 export type RecordFreshness = "current" | "delayed" | "stale" | "unknown";
 
 export interface CarAvailability {
+  /** HDB counts carry a record time and total; LTA DataMall counts have neither. */
+  reportedBy: "HDB" | "LTA";
   state: "known" | "unknown" | "not-in-feed";
   available: number | null;
   total: number | null;
@@ -83,6 +93,8 @@ export interface NearbyResponse {
   query: { lat: number; lng: number; radiusM: number };
   feed: FeedStatus;
   registry: RegistryFile["source"] & { count: number };
+  /** LTA DataMall feed for non-HDB carparks; null when LTA isn't configured. */
+  lta: FeedStatus | null;
   /** Short-term carparks inside the radius. Can exceed carparks.length (capped), or be below it (padded with nearest ones). */
   withinRadius: number;
   carparks: NearbyCarpark[];
@@ -107,4 +119,24 @@ export interface OverviewResponse {
   feed: FeedStatus;
   counts: { carparks: number; reporting: number; withSpaces: number };
   points: [number, number, number][];
+}
+
+/** A non-HDB carpark from LTA DataMall's CarParkAvailabilityv2 (Agency LTA or URA), car lots only. */
+export interface LtaCarpark {
+  /** "lta:1", "ura:A0007". */
+  key: string;
+  agency: "LTA" | "URA";
+  carparkId: string;
+  name: string;
+  area: string | null;
+  lat: number;
+  lng: number;
+  /** Car lots available as reported. LTA gives no total and no time. Null when unusable. */
+  carLots: number | null;
+}
+
+export interface LtaSnapshot {
+  /** When ParkWhere received the feed. LTA gives no record or feed time, so this is the only time we have. */
+  fetchedAt: string;
+  carparks: LtaCarpark[];
 }

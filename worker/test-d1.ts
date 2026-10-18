@@ -19,12 +19,18 @@ class Statement {
   async first<T>() {
     return (this.named().get(...this.values) as T | undefined) ?? null;
   }
-  async all<T>() {
+  allSync<T>() {
     return { results: this.named().all(...this.values) as T[], success: true, meta: {} };
   }
-  async run() {
+  runSync() {
     const info = this.named().run(...this.values);
     return { results: [], success: true, meta: { changes: Number(info.changes) } };
+  }
+  async all<T>() {
+    return this.allSync<T>();
+  }
+  async run() {
+    return this.runSync();
   }
 }
 
@@ -37,13 +43,11 @@ export function createTestD1(): D1Database & { raw: DatabaseSync } {
   const api = {
     raw: db,
     prepare: (sql: string) => new Statement(db, sql),
+    // Runs without awaiting between statements, so concurrent batches can't interleave (as in D1).
     async batch(statements: Statement[]) {
       db.exec("BEGIN");
       try {
-        const results = [];
-        for (const statement of statements) {
-          results.push(/^\s*select/i.test(statement.sql) ? await statement.all() : await statement.run());
-        }
+        const results = statements.map((statement) => (/^\s*select/i.test(statement.sql) ? statement.allSync() : statement.runSync()));
         db.exec("COMMIT");
         return results;
       } catch (error) {
