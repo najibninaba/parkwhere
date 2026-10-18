@@ -45,7 +45,7 @@ ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A si
 5. A count describes the whole carpark when it last reported. It doesn't reserve a lot, describe a single bay or predict the future.
 6. Registry coordinates are not entrances. Navigation goes to Google Maps, Apple Maps or Waze with that caveat. Don't build turn-by-turn guidance.
 7. Cost estimates come only from rules HDB publishes (see the header of `shared/tariff.ts`). When a rule is missing or ambiguous (coupon carparks, peak windows, Central Area rates on public holidays, unpublished holiday years), return `unavailable` with the published rate.
-8. Don't add accounts, payments, bookings, AI, predictions, entrance photos or manual walking routes.
+8. Don't add accounts, payments, bookings, predictions, entrance photos or manual walking routes.
 9. LTA DataMall counts have no time and no total. Never colour them as current, never write "now" about them, and never price them. HDB rows from LTA are dropped in favour of data.gov.sg's.
 
 ## External services

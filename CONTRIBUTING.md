@@ -5,7 +5,7 @@ Thanks for helping. ParkWhere is a small civic tool that one person maintains, s
 ## Before you start
 
 - For a bug or a wrong carpark detail, open an issue first. Use the "Carpark data looks wrong" template for data problems.
-- For a new feature, open an issue to discuss it before you write code. Some features are out of scope on purpose: accounts, payments, bookings, AI, predictions, entrance photos and walking routes.
+- For a new feature, open an issue to discuss it before you write code. Some features are out of scope on purpose: accounts, payments, bookings, predictions, entrance photos and walking routes.
 - Read [AGENTS.md](AGENTS.md) for the layout and the data rules, and [DESIGN.md](DESIGN.md) for the visual system. The data rules are the most important part of this project: unknown is never zero, old counts are never shown as current, and prices are never invented.
 
 ## Set up
