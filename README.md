@@ -35,10 +35,10 @@
 
 ## What it does
 
-- **Shows every carpark on a map.** Every HDB carpark, the mall and URA carparks that report to LTA, and public carparks mapped on OpenStreetMap, such as the zoo's. Dots are coloured by how many car lots are available.
-- **Says how recent each count is.** HDB counts show when the carpark last reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
-- **Estimates what your stay costs.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate.
-- **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location.
+- **Shows carparks on a map.** Every HDB carpark, the mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap, such as the zoo's. Dots are coloured by how many car lots are available. OpenStreetMap carparks have no count, so their dots are grey.
+- **Says how recent each count is.** HDB counts show when the carpark last reported. LTA counts have no time, so they're shown as reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
+- **Estimates what your stay costs at HDB carparks.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate. Mall, URA and OpenStreetMap carparks say "No estimate".
+- **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location, or at its entrance when OpenStreetMap maps one.
 
 <p align="center">
   <img src="docs/media/card-phone.png" width="300" alt="An HDB carpark card with its car lot count, when it was reported, the estimated price and the rates">
@@ -49,7 +49,7 @@
 ## How it works
 
 <p align="center">
-  <img src="docs/media/architecture.png" width="820" alt="Architecture: data.gov.sg, LTA DataMall and OneMap feed one Cloudflare Worker, which keeps the last good counts in D1 and serves a JSON API to the ParkWhere app, which hands directions to your map app">
+  <img src="docs/media/architecture.png" width="820" alt="Architecture: data.gov.sg, LTA DataMall, OneMap and bundled lists of HDB and OpenStreetMap carparks feed one Cloudflare Worker, which keeps the last good counts in D1 and serves a JSON API to the ParkWhere app, which hands directions to your map app">
 </p>
 
 One Cloudflare Worker serves the web app and a small JSON API:

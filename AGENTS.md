@@ -1,6 +1,6 @@
 # ParkWhere: agent notes
 
-ParkWhere is a Singapore HDB parking finder at https://parkwhere.bijan.app. A single Cloudflare Worker serves both the PWA and a small JSON API. One person maintains it, so keep it small, honest and low-maintenance.
+ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It covers HDB carparks, the mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap. A single Cloudflare Worker serves both the PWA and a small JSON API. One person maintains it, so keep it small, honest and low-maintenance.
 
 ## Commands
 

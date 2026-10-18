@@ -22,7 +22,7 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
       <dl className="promises">
         <div>
           <dt>Available car lots</dt>
-          <dd>Counts from HDB and LTA. HDB counts also show when each carpark last reported.</dd>
+          <dd>Counts from HDB and LTA, for the carparks that report them. HDB counts also show when each carpark last reported.</dd>
         </div>
         <div>
           <dt>Price estimates</dt>
@@ -30,7 +30,7 @@ export function Landing({ onChoose }: { onChoose: (destination: Destination) => 
         </div>
         <div>
           <dt>Directions</dt>
-          <dd>Open Google Maps, Apple Maps or Waze at the carpark’s mapped location.</dd>
+          <dd>Open Google Maps, Apple Maps or Waze at the carpark’s mapped location, or at its entrance when one is mapped.</dd>
         </div>
       </dl>
       <p className="hint">Covers HDB carparks, mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap. Only HDB prices are estimated.</p>
