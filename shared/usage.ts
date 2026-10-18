@@ -11,6 +11,7 @@ export const USAGE_SCHEMA = "v1";
 export const LOOKUP_VIA = ["search", "pick", "near-me", "area", "link"] as const;
 export type LookupVia = (typeof LOOKUP_VIA)[number];
 export const isLookupVia = (value: unknown): value is LookupVia => (LOOKUP_VIA as readonly unknown[]).includes(value);
+const AREA_VIA = new Set<LookupVia>(["search", "pick", "area"]);
 
 export type Display = "standalone" | "browser";
 const NAV_APPS = ["google", "apple", "waze"] as const;
@@ -68,9 +69,10 @@ export interface LookupFacts {
  */
 export function lookupPoint(facts: LookupFacts): DataPoint {
   const answered = answeredBy(facts.carparks, facts.radiusM);
-  // The area is recorded only where it's needed (no carpark in the radius) and never for Near me, which
-  // could show where someone lives or works.
-  const gap = (answered === "outside-radius" || answered === "none") && facts.via !== "near-me" ? areaCell(facts.origin.lat, facts.origin.lng) : "";
+  // The area is recorded only where it's needed (no carpark in the radius), and only for places someone
+  // searched for, picked or panned to. Never for Near me, which could show where someone lives or works,
+  // nor for links, which include reloading a Near me result.
+  const gap = (answered === "outside-radius" || answered === "none") && AREA_VIA.has(facts.via) ? areaCell(facts.origin.lat, facts.origin.lng) : "";
   const shown = (source: CarparkSource) => facts.carparks.filter((carpark) => (carpark.source ?? "hdb") === source).length;
   const current = facts.carparks.filter(
     (carpark) => carpark.distanceM <= facts.radiusM && carpark.car.reportedBy === "HDB" && carpark.car.state === "known" && carpark.car.freshness === "current"
@@ -118,16 +120,27 @@ export function searchPoint(source: string, results: number, ok: boolean, latenc
 /** An API request that failed on ParkWhere's side (HTTP 5xx). */
 export const errorPoint = (route: string, status: number): DataPoint => ({ indexes: ["error"], blobs: [USAGE_SCHEMA, route], doubles: [status] });
 
-/** Only a site's host name is kept as a referrer, and only another site's: "google.com", "t.me". */
+/** Second-level labels under which the site name is the third label: "straitstimes.com.sg", "bbc.co.uk". */
+const SECOND_LEVEL = new Set(["com", "edu", "gov", "org", "net", "co", "ac"]);
+
+/**
+ * Only another site's name is kept as a referrer, cut to its registrable part ("google.com",
+ * "reddit.com", "straitstimes.com.sg"), so a personal subdomain or an IP address is never kept.
+ */
 export function referrerHost(value: string | null, ownHost: string): string {
   if (!value) return "";
+  let host: string;
   try {
-    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
-    if (!/^[a-z0-9.-]{1,64}$/.test(host) || host === ownHost.replace(/^www\./, "")) return "";
-    return host;
+    host = (value.includes("/") ? new URL(value).hostname : value).toLowerCase();
   } catch {
     return "";
   }
+  if (!/^[a-z0-9.-]{1,253}$/.test(host) || /^[0-9.]+$/.test(host) || !host.includes(".")) return "";
+  const labels = host.split(".").filter(Boolean);
+  const keep = labels.length >= 3 && SECOND_LEVEL.has(labels[labels.length - 2]) && labels[labels.length - 1].length === 2 ? 3 : 2;
+  const site = labels.slice(-keep).join(".");
+  const own = ownHost.toLowerCase().split(".").slice(-2).join(".");
+  return site === own || site.length > 64 ? "" : site;
 }
 
 export interface DirectionsBeacon {

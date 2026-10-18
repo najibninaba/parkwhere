@@ -328,18 +328,23 @@ describe("Worker routes", () => {
       try {
         const { points, EVENTS } = recorder();
         const e = env({ EVENTS } as unknown as Partial<Env>);
-        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&via=search&first=1&ref=https%3A%2F%2Fwww.google.com%2F", e);
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&c=1&via=search&first=1&ref=www.google.com", e);
         // A refresh carries no "via": not another lookup.
-        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500", e);
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&c=1", e);
+        // Without c=1 (counting off in the browser) nothing is counted, even with via.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=500&via=search", e);
         expect(points.map((point) => point.indexes[0])).toEqual(["visit", "lookup"]);
         expect(points[0].blobs).toEqual(["v1", "browser", "mobile", "", "google.com"]);
         // The zoo's OpenStreetMap carpark is 493 m away, inside 500 m, with no count; no gap area is written.
         expect(points[1].blobs.slice(0, 3)).toEqual(["v1", "search", "no-count"]);
         expect(points[1].blobs[8]).toBe("");
         // Within 300 m there's nothing, so the lookup is a gap and its rough area is written.
-        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=300&via=search", e);
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=300&c=1&via=search", e);
         expect(points[2].blobs.slice(2, 3)).toEqual(["outside-radius"]);
         expect(points[2].blobs[8]).toBe("1.40,103.78");
+        // A link (which includes reloading a Near me result) never records an area.
+        await get("/api/nearby?lat=1.40433&lng=103.79304&radius=300&c=1&via=link", e);
+        expect(points[3].blobs[8]).toBe("");
         expect(JSON.stringify(points)).not.toContain("1.40433");
       } finally {
         globalThis.fetch = original;
@@ -352,11 +357,13 @@ describe("Worker routes", () => {
       try {
         const { points, EVENTS } = recorder();
         const e = env({ EVENTS } as unknown as Partial<Env>);
-        await get("/api/nearby?lat=1.30106&lng=103.85412&via=pick&first=1", e, { ...ua, "sec-gpc": "1" });
-        await get("/api/nearby?lat=1.30106&lng=103.85412&via=pick&first=1", e, { ...ua, dnt: "1" });
-        await get("/api/nearby?lat=1.30106&lng=103.85412&via=pick&first=1", e, { "user-agent": "curl/8.7.1" });
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { ...ua, "sec-gpc": "1" });
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { ...ua, dnt: "1" });
+        await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", e, { "user-agent": "curl/8.7.1" });
+        await get("/api/search?q=bugis", e, { ...ua, "sec-gpc": "1" });
+        await get("/api/search?q=bugis", e);
         expect(points).toEqual([]);
-        expect((await get("/api/nearby?lat=1.30106&lng=103.85412&via=pick&first=1", env())).status).toBe(200);
+        expect((await get("/api/nearby?lat=1.30106&lng=103.85412&c=1&via=pick&first=1", env())).status).toBe(200);
       } finally {
         globalThis.fetch = original;
       }
@@ -371,6 +378,10 @@ describe("Worker routes", () => {
       expect((await post(good, { "sec-fetch-site": "same-origin" })).status).toBe(204);
       expect((await post(good, { "sec-fetch-site": "cross-site" })).status).toBe(204);
       expect((await post(good, { origin: "https://evil.example" })).status).toBe(204);
+      // A same-origin fetch-site header doesn't excuse a foreign Origin, and neither header means no count.
+      expect((await post(good, { "sec-fetch-site": "same-origin", origin: "https://evil.example" })).status).toBe(204);
+      expect((await post(good, {})).status).toBe(204);
+      expect((await post(JSON.stringify({ event: "directions", pad: "x".repeat(4000) }), { "sec-fetch-site": "same-origin" })).status).toBe(204);
       expect((await post(JSON.stringify({ event: "pageview", url: "/x" }), { "sec-fetch-site": "same-origin" })).status).toBe(204);
       expect(points).toEqual([{ indexes: ["directions"], blobs: ["v1", "waze", "osm", "first", "standalone", ""], doubles: [] }]);
     });

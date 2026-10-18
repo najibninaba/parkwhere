@@ -3,12 +3,14 @@
 //   pnpm stats                      last 7 days, printed
 //   pnpm stats --days 30            last 30 days
 //   pnpm stats --month 2026-10      one calendar month (UTC), printed
+// Only rows in the current layout (blob1 = USAGE_SCHEMA "v1") are read; bump both together.
 //   pnpm stats --month 2026-10 --write   also saves docs/stats/2026-10.md (Analytics Engine keeps 3 months)
 //   pnpm stats --staging            the staging dataset
 //
 // Needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_ANALYTICS_TOKEN (an API token with Account Analytics: Read),
-// from the environment or .dev.vars. Counts are weighted by _sample_interval, so they're estimates, and
-// rows under MIN_ROWS are hidden so a rare area or referrer can't single anyone out.
+// from the environment or .dev.vars. Counts are weighted by _sample_interval, so they're estimates. In the
+// area and referrer tables, a row backed by fewer than MIN_ROWS stored data points is hidden, so a rare
+// area or referrer can't single anyone out (a sampled row can stand for several events).
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -36,10 +38,11 @@ if (month && !/^\d{4}-\d{2}$/.test(month)) throw new Error("--month takes YYYY-M
 if (!month && (!Number.isInteger(days) || days < 1 || days > 90)) throw new Error("--days takes 1 to 90");
 
 function period(): { where: string; label: string } {
-  if (!month) return { where: `timestamp >= NOW() - INTERVAL '${days}' DAY`, label: `the last ${days} days` };
+  if (!month) return { where: `blob1 = 'v1' AND timestamp >= NOW() - INTERVAL '${days}' DAY`, label: `the last ${days} days` };
   const [year, mon] = month.split("-").map(Number);
   const next = mon === 12 ? `${year + 1}-01` : `${year}-${String(mon + 1).padStart(2, "0")}`;
-  return { where: `timestamp >= toDateTime('${month}-01 00:00:00') AND timestamp < toDateTime('${next}-01 00:00:00')`, label: month };
+  // Calendar months in UTC (Singapore's month starts 8 hours earlier).
+  return { where: `blob1 = 'v1' AND timestamp >= toDateTime('${month}-01 00:00:00') AND timestamp < toDateTime('${next}-01 00:00:00')`, label: `${month} (UTC)` };
 }
 
 type Row = Record<string, string | number>;
@@ -59,13 +62,13 @@ const { where, label } = period();
 const n = "SUM(_sample_interval)";
 /** Counts of one event, grouped by one of its blobs. */
 const by = (event: string, blob: number, extra = "") =>
-  query(`SELECT blob${blob} AS key, ${n} AS n FROM ${dataset} WHERE index1 = '${event}' AND ${where} ${extra} GROUP BY key ORDER BY n DESC`);
+  query(`SELECT blob${blob} AS key, ${n} AS n, count() AS stored FROM ${dataset} WHERE index1 = '${event}' AND ${where} ${extra} GROUP BY key ORDER BY n DESC`);
 
 const num = (value: unknown) => Number(value ?? 0);
 const share = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : "–");
 const total = (rows: Row[]) => rows.reduce((sum, row) => sum + num(row.n), 0);
 const table = (rows: Row[], heading: string, whole: number, hideSmall = false) => {
-  const shown = rows.filter((row) => !hideSmall || num(row.n) >= MIN_ROWS);
+  const shown = rows.filter((row) => !hideSmall || num(row.stored) >= MIN_ROWS);
   if (shown.length === 0) return `| ${heading} | Count | Share |\n|---|---|---|\n| (none${hideSmall ? ` with ${MIN_ROWS} or more` : ""}) | | |`;
   return [`| ${heading} | Count | Share |`, "|---|---|---|", ...shown.map((row) => `| ${row.key || "(none)"} | ${Math.round(num(row.n))} | ${share(num(row.n), whole)} |`)].join("\n");
 };
@@ -103,12 +106,12 @@ Anonymous counts from Workers Analytics Engine, estimated from sampled data. No 
 |---|---|
 | Lookups (destinations looked up) | ${Math.round(lookups)} |
 | Answered with a current count nearby | ${share(current, lookups)} |
-| Lookups that opened directions | ${share(handoffs, lookups)} (${Math.round(handoffs)}) |
+| Directions hand-offs per lookup | ${share(handoffs, lookups)} (${Math.round(handoffs)} hand-offs) |
 | Visits (page loads) | ${Math.round(visits)} |
 | Lookups per visit | ${visits > 0 ? (lookups / visits).toFixed(2) : "–"} |
 | Average lookup time | ${Math.round(num(latency[0]?.ms))} ms |
 
-"Answered" means at least one HDB carpark within the chosen radius had a count from the last 15 minutes. "Opened directions" counts the first map app opened for a destination; it's a hand-off, not proof of parking.
+"Answered" means at least one HDB carpark within the chosen radius had a count from the last 15 minutes. A hand-off is the first map app opened for a destination; it isn't proof of parking. Hand-offs and lookups are counted separately, so their ratio can pass 100% (for example, a lookup late on the last day of a period and its hand-off after midnight).
 
 ## Lookups
 

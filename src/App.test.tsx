@@ -331,7 +331,7 @@ describe("ParkWhere app", () => {
     const user = await searchAndChoose();
     const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
     const nearbyUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith("/api/nearby"));
-    expect(nearbyUrls[0]).toContain("&via=search");
+    expect(nearbyUrls[0]).toContain("c=1&via=search");
     expect(nearbyUrls[0]).not.toContain("name=");
     await user.click(within(card).getByText("Directions"));
     const google = within(card).getByRole("link", { name: "Google Maps" });

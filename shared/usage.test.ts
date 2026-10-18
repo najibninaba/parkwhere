@@ -59,6 +59,7 @@ describe("lookupPoint", () => {
     expect(gap.blobs).toEqual(["v1", "search", "outside-radius", "live", "live", "browser", "mobile", "SG", "1.40,103.78", "500"]);
     expect(gap.doubles).toEqual([0, 1, 1435, 0, 0, 1, 0, 42]);
     expect(lookupPoint({ ...base, via: "near-me", carparks: [] }).blobs[8]).toBe("");
+    expect(lookupPoint({ ...base, via: "link", carparks: [] }).blobs[8]).toBe("");
     expect(lookupPoint({ ...base, via: "search", withinRadius: 1, carparks: [carpark("A", 100, car({}))] }).blobs[8]).toBe("");
   });
 
@@ -95,6 +96,12 @@ describe("usageBlocked and referrerHost", () => {
 
   it("keeps only another site's host name", () => {
     expect(referrerHost("https://www.google.com/search?q=parking", "parkwhere.bijan.app")).toBe("google.com");
+    expect(referrerHost("www.google.com", "parkwhere.bijan.app")).toBe("google.com");
+    expect(referrerHost("www.straitstimes.com.sg", "parkwhere.bijan.app")).toBe("straitstimes.com.sg");
+    expect(referrerHost("alice.customer.example", "parkwhere.bijan.app")).toBe("customer.example");
+    expect(referrerHost("192.168.1.42", "parkwhere.bijan.app")).toBe("");
+    expect(referrerHost("[::1]", "parkwhere.bijan.app")).toBe("");
+    expect(referrerHost("staging.bijan.app", "parkwhere.bijan.app")).toBe("");
     expect(referrerHost("https://parkwhere.bijan.app/?lat=1.3", "parkwhere.bijan.app")).toBe("");
     expect(referrerHost("javascript:alert(1)", "parkwhere.bijan.app")).toBe("");
     expect(referrerHost(null, "parkwhere.bijan.app")).toBe("");

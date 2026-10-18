@@ -8,13 +8,14 @@ const OPT_OUT_KEY = "parkwhere:no-stats";
 
 /** Visiting ?nostats turns counting off in this browser (for the owner's own testing); ?stats turns it back on. */
 function readOptOut(): boolean {
+  const params = new URLSearchParams(window.location.search);
   try {
-    const params = new URLSearchParams(window.location.search);
     if (params.has("nostats")) window.localStorage.setItem(OPT_OUT_KEY, "1");
     if (params.has("stats")) window.localStorage.removeItem(OPT_OUT_KEY);
-    return window.localStorage.getItem(OPT_OUT_KEY) === "1";
+    return params.has("nostats") || window.localStorage.getItem(OPT_OUT_KEY) === "1";
   } catch {
-    return false;
+    // Storage blocked: the flag in the address still turns counting off for this page.
+    return params.has("nostats");
   }
 }
 
@@ -29,24 +30,45 @@ export function countingAllowed(): boolean {
 export const display = (): DirectionsBeacon["display"] =>
   window.matchMedia?.("(display-mode: standalone)").matches ? "standalone" : "browser";
 
-let firstSent = false;
+/**
+ * A reload (including the automatic one after a site update) isn't a new visit, and the destination in
+ * its address isn't a new lookup.
+ */
+export const reloaded = typeof performance !== "undefined" && (performance.getEntriesByType?.("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
+
+let firstSent = reloaded;
+
+/** Only the referring site's host name leaves the browser; the server cuts it down further. */
+function referrerHostName(): string {
+  try {
+    return document.referrer ? new URL(document.referrer).hostname.slice(0, 253) : "";
+  } catch {
+    return "";
+  }
+}
 
 /**
- * Query parameters for an API request: the visit details on the first request of a page load, and how
- * the destination was chosen on the first request for a destination. Empty when counting isn't allowed.
+ * Query parameters for an API request: c=1 when counting is allowed (the server counts nothing
+ * without it), the visit details on the first request of a page load, and how the destination was
+ * chosen on the first request for a destination. Empty when counting isn't allowed.
  */
 export function usageParams(via?: LookupVia): string {
   if (!countingAllowed()) return "";
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ c: "1" });
   if (via) params.set("via", via);
   if (display() === "standalone") params.set("app", "1");
   if (!firstSent) {
     firstSent = true;
     params.set("first", "1");
-    if (document.referrer) params.set("ref", document.referrer.slice(0, 200));
+    const ref = referrerHostName();
+    if (ref) params.set("ref", ref);
   }
-  const query = params.toString();
-  return query ? `&${query}` : "";
+  return `&${params.toString()}`;
+}
+
+/** A request that carried the visit details failed, so the next one carries them again. */
+export function visitNotDelivered() {
+  firstSent = false;
 }
 
 /** Counts a directions hand-off. `first` marks the first one for the current destination. */

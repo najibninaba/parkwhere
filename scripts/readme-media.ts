@@ -7,6 +7,8 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+/** Marks ParkWhere's own checks so the Worker never counts them in the usage numbers. */
+const CHECK_HEADERS = { "x-parkwhere-check": "1" };
 
 const base = (process.argv[2] ?? "http://localhost:5173").replace(/\/$/, "");
 const out = new URL("../docs/media/", import.meta.url).pathname;
@@ -20,7 +22,7 @@ const settle = (ms = 1200) => new Promise((resolve) => setTimeout(resolve, ms));
 
 try {
   // Desktop: landing and results.
-  const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "en-SG", timezoneId: "Asia/Singapore" });
+  const desktop = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, viewport: { width: 1280, height: 800 }, locale: "en-SG", timezoneId: "Asia/Singapore" });
   const page = await desktop.newPage();
   await page.goto(`${base}/`, { waitUntil: "networkidle" });
   await settle(1800);
@@ -32,7 +34,7 @@ try {
   await desktop.close();
 
   // Phone: landing, HDB results, LTA results.
-  const phone = await browser.newContext(phoneOptions);
+  const phone = await browser.newContext({ ...phoneOptions, extraHTTPHeaders: CHECK_HEADERS });
   const p = await phone.newPage();
   await p.goto(`${base}/`, { waitUntil: "networkidle" });
   await settle(1800);
@@ -55,7 +57,7 @@ try {
 
   // Walkthrough on a phone, recorded, then made into a small GIF.
   const videoDir = join(out, "video-tmp");
-  const recorded = await browser.newContext({ ...phoneOptions, deviceScaleFactor: 1, recordVideo: { dir: videoDir, size: { width: 390, height: 844 } } });
+  const recorded = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, ...phoneOptions, deviceScaleFactor: 1, recordVideo: { dir: videoDir, size: { width: 390, height: 844 } } });
   const w = await recorded.newPage();
   await w.goto(`${base}/`, { waitUntil: "networkidle" });
   await settle(2200);
@@ -81,7 +83,7 @@ try {
 
   // Diagrams: docs/diagrams/*.html, exported at 2x so GitHub shows them with the right fonts.
   const diagrams = new URL("../docs/diagrams/", import.meta.url).pathname;
-  const sheet = await browser.newContext({ viewport: { width: 1100, height: 900 }, deviceScaleFactor: 2 });
+  const sheet = await browser.newContext({ extraHTTPHeaders: CHECK_HEADERS, viewport: { width: 1100, height: 900 }, deviceScaleFactor: 2 });
   const d = await sheet.newPage();
   for (const name of (await readdir(diagrams)).filter((file) => file.endsWith(".html"))) {
     await d.goto(`file://${join(diagrams, name)}`, { waitUntil: "networkidle" });

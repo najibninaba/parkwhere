@@ -42,12 +42,28 @@ function count(env: Env, point: DataPoint) {
 
 const country = (request: Request) => (typeof request.cf?.country === "string" ? request.cf.country : "");
 
+/** Per-visitor cap on counted requests, so a script can't flood the numbers. An abuse limit, not authentication. */
+async function underEventLimit(request: Request, env: Env): Promise<boolean> {
+  if (!env.EVENT_LIMITER) return true;
+  const { success } = await env.EVENT_LIMITER.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
+  return success;
+}
+
+/**
+ * Whether this API request may be counted: the app adds c=1 only when counting is allowed in the browser
+ * (no Global Privacy Control, Do Not Track, automation or ?nostats), the headers say the same, and the
+ * visitor is under the event limit.
+ */
+async function countable(request: Request, url: URL, env: Env): Promise<boolean> {
+  return Boolean(env.EVENTS) && url.searchParams.get("c") === "1" && !usageBlocked(request.headers) && (await underEventLimit(request, env));
+}
+
 /**
  * The first API request of a page load carries first=1, app=1 when ParkWhere runs as an installed app,
  * and the referring site's host name. That request counts as a visit.
  */
 function countVisit(request: Request, url: URL, env: Env) {
-  if (url.searchParams.get("first") !== "1" || usageBlocked(request.headers)) return;
+  if (url.searchParams.get("first") !== "1") return;
   const display = url.searchParams.get("app") === "1" ? "standalone" : "browser";
   count(env, visitPoint(display, isMobile(request.headers), country(request), referrerHost(url.searchParams.get("ref"), url.hostname)));
 }
@@ -127,11 +143,12 @@ async function nearby(request: Request, url: URL, env: Env, ctx: ExecutionContex
     withinRadius: result.withinRadius,
     carparks: result.carparks
   };
-  countVisit(request, url, env);
   // Only the first request for a destination says how it was chosen; refreshes and radius changes don't,
   // so they aren't counted as lookups.
   const via = url.searchParams.get("via");
-  if (isLookupVia(via) && !usageBlocked(request.headers)) {
+  const counting = (url.searchParams.get("first") === "1" || isLookupVia(via)) && (await countable(request, url, env));
+  if (counting) countVisit(request, url, env);
+  if (counting && isLookupVia(via)) {
     count(env, lookupPoint({
       via,
       radiusM,
@@ -154,7 +171,7 @@ async function nearby(request: Request, url: URL, env: Env, ctx: ExecutionContex
  * minutes are coloured or counted as "reporting"; LTA/URA counts have no time, so their dots are grey.
  */
 async function overview(request: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
-  countVisit(request, url, env);
+  if (url.searchParams.get("first") === "1" && (await countable(request, url, env))) countVisit(request, url, env);
   const now = new Date();
   const feeds = await readFeeds(env, ctx, now);
   let reporting = 0;
@@ -181,7 +198,8 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
     if (!success) return problem(429, "Too many searches. Try again in a minute.");
   }
   const started = Date.now();
-  const counted = !usageBlocked(request.headers);
+  const counted = await countable(request, url, env);
+  if (counted) countVisit(request, url, env);
   try {
     const body = await search(env, carparks, query);
     if (counted) count(env, searchPoint(body.source, body.results.length, true, Date.now() - started));
@@ -200,17 +218,41 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
  */
 async function event(request: Request, url: URL, env: Env): Promise<Response> {
   const done = new Response(null, { status: 204 });
+  // Browsers send these and pages can't forge them, so they keep other sites from counting through a
+  // visitor's browser. A script can still send anything; the event limit caps what it can add.
   const site = request.headers.get("sec-fetch-site");
   const origin = request.headers.get("origin");
-  if (site ? site !== "same-origin" : origin !== url.origin) return done;
-  if (usageBlocked(request.headers) || Number(request.headers.get("content-length") ?? 0) > 1024) return done;
-  if (env.EVENT_LIMITER) {
-    const { success } = await env.EVENT_LIMITER.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
-    if (!success) return done;
-  }
-  const beacon = parseBeacon(await request.text());
+  if ((site !== null && site !== "same-origin") || (origin !== null && origin !== url.origin) || (site === null && origin === null)) return done;
+  if (!env.EVENTS || usageBlocked(request.headers) || !(await underEventLimit(request, env))) return done;
+  const text = await readCapped(request, 1024);
+  const beacon = text === null ? null : parseBeacon(text);
   if (beacon) count(env, directionsPoint(beacon, country(request)));
   return done;
+}
+
+/** The body as text, or null once it passes `limit` bytes, read as it arrives so a large body is never buffered. */
+async function readCapped(request: Request, limit: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -249,7 +291,7 @@ export default {
       if (url.pathname.startsWith("/api/")) return problem(404, "Not found");
     } catch (error) {
       console.error("ParkWhere request failed", url.pathname, error);
-      count(env, errorPoint(url.pathname, 500));
+      if (!usageBlocked(request.headers)) count(env, errorPoint(url.pathname, 500));
       return problem(500, "Something went wrong on our side.");
     }
     return env.ASSETS.fetch(request);

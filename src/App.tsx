@@ -5,7 +5,7 @@ import { parseSgtLocal, toSgtLocal } from "../shared/sgt";
 import { estimateCost, type CostEstimate } from "../shared/tariff";
 import { ApiError, fetchNearby, fetchOverview } from "./api";
 import type { NavApp } from "./navigation";
-import { countDirections } from "./usage";
+import { countDirections, reloaded } from "./usage";
 import { withTimeout } from "./timeout";
 import { CardSkeleton } from "./components/CardSkeleton";
 import { CarparkCard } from "./components/CarparkCard";
@@ -30,7 +30,7 @@ function destinationFromUrl(): Destination | null {
   const lat = Number(params.get("lat"));
   const lng = Number(params.get("lng"));
   if (!params.has("lat") || !params.has("lng") || !isInSingapore(lat, lng)) return null;
-  return { lat, lng, name: params.get("name")?.slice(0, 80) || "Shared location", via: "link" };
+  return { lat, lng, name: params.get("name")?.slice(0, 80) || "Shared location", via: reloaded ? undefined : "link" };
 }
 
 function radiusFromUrl(): number {
@@ -145,9 +145,10 @@ export default function App() {
       setLoad((current) => ({ kind: "loading", key: queryKey, previous: previousFor(current, queryKey) }));
       const request = withTimeout(controller.signal, REQUEST_TIMEOUT_MS);
       const via = lookupSent.current === destination ? undefined : destination.via;
-      lookupSent.current = destination;
       fetchNearby(destination.lat, destination.lng, radiusM, request.signal, via)
         .then((data) => {
+          // Marked only once a response arrives, so a failed or abandoned first request is retried with it.
+          lookupSent.current = destination;
           if (controller.signal.aborted) return;
           setLoad({ kind: "ready", key: queryKey, data, receivedAt: Date.now() });
           setNow(Date.now());
