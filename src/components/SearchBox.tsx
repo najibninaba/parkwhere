@@ -11,11 +11,13 @@ export interface Destination {
 interface Props {
   destination: Destination | null;
   onChoose: (destination: Destination) => void;
+  /** The landing page's main call to action: larger field and button. */
+  prominent?: boolean;
 }
 
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "results"; query: string; places: Place[]; source: string } | { kind: "error"; message: string };
 
-export function SearchBox({ destination, onChoose }: Props) {
+export function SearchBox({ destination, onChoose, prominent = false }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [locating, setLocating] = useState(false);
@@ -75,8 +77,8 @@ export function SearchBox({ destination, onChoose }: Props) {
   const open = status.kind !== "idle";
 
   return (
-    <div className="search">
-      <label className="label" htmlFor={`${listId}-input`}>
+    <div className={`search${prominent ? " search-prominent" : ""}`}>
+      <label className={prominent ? "label" : "sr-only"} htmlFor={`${listId}-input`}>
         Where are you going?
       </label>
       <div className="search-row">
@@ -87,7 +89,7 @@ export function SearchBox({ destination, onChoose }: Props) {
           type="search"
           inputMode="search"
           autoComplete="off"
-          placeholder={destination ? destination.name : "Place, building, postal code"}
+          placeholder={destination ? "Search another place" : "Place or postal code"}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -103,7 +105,11 @@ export function SearchBox({ destination, onChoose }: Props) {
           aria-controls={listId}
           aria-autocomplete="list"
         />
-        <button type="button" className="button" onClick={useMyLocation} disabled={locating}>
+        <button type="button" className="button button-locate" onClick={useMyLocation} disabled={locating}>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
           {locating ? "Locating…" : "Near me"}
         </button>
       </div>

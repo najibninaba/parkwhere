@@ -1,5 +1,6 @@
-import { feedStatus } from "../shared/availability";
-import type { NearbyResponse, RegistryFile } from "../shared/domain";
+import { carAvailability, feedStatus } from "../shared/availability";
+import type { NearbyResponse, OverviewResponse, RegistryFile } from "../shared/domain";
+import { levelCode, spaceLevel } from "../shared/levels";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore, nearbyCarparks } from "../shared/nearby";
 import { LOADING_BAYS } from "../shared/tariff";
 import { getFeed, type FeedEnv, type FeedRead } from "./feed";
@@ -49,6 +50,31 @@ async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
   return json(body);
 }
 
+/** Every short-term HDB carpark as a coloured dot, for the landing map. */
+async function overview(env: Env, ctx: ExecutionContext): Promise<Response> {
+  const now = new Date();
+  const feed = await getFeed(env, (promise) => ctx.waitUntil(promise)).catch((error: unknown): FeedRead => {
+    console.error("ParkWhere availability store failed", error);
+    return { snapshot: null, status: { lastAttemptAt: null, lastSuccessAt: null, lastError: "Availability is temporarily unavailable." } };
+  });
+  let reporting = 0;
+  let withSpaces = 0;
+  const points: OverviewResponse["points"] = [];
+  for (const carpark of carparks) {
+    if (carpark.shortTermParking === "NO") continue;
+    const car = carAvailability(feed.snapshot, carpark.id, now);
+    const level = spaceLevel(car, now.getTime());
+    // Same rule as the dot colours: a count from the last hour. Older or missing counts aren't "reporting".
+    if (level !== "unknown") {
+      reporting += 1;
+      if (level !== "full") withSpaces += 1;
+    }
+    points.push([Number(carpark.lat.toFixed(5)), Number(carpark.lng.toFixed(5)), levelCode(level)]);
+  }
+  const body: OverviewResponse = { feed: feedStatus(feed.snapshot, feed.status, now), counts: { carparks: points.length, reporting, withSpaces }, points };
+  return json(body, 200, "public, max-age=30");
+}
+
 async function searchRoute(request: Request, url: URL, env: Env): Promise<Response> {
   const query = (url.searchParams.get("q") ?? "").trim().slice(0, 80);
   if (query.length < 2) return problem(400, "Type at least 2 characters.");
@@ -85,6 +111,7 @@ export default {
     if (request.method !== "GET" && request.method !== "HEAD") return problem(405, "Method not allowed");
     try {
       if (url.pathname === "/api/nearby") return await nearby(url, env, ctx);
+      if (url.pathname === "/api/overview") return await overview(env, ctx);
       if (url.pathname === "/api/search") return await searchRoute(request, url, env);
       if (url.pathname === "/health") return await health(env, ctx);
       if (url.pathname.startsWith("/api/")) return problem(404, "Not found");

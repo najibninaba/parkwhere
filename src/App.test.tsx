@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NearbyCarpark, NearbyResponse } from "../shared/domain";
 import App from "./App";
 
-vi.mock("./components/CarparkMap", () => ({ default: () => <div data-testid="map" /> }));
+vi.mock("./components/ParkMap", () => ({ default: () => <div data-testid="map" /> }));
 
 const base: Omit<NearbyCarpark, "id" | "address" | "distanceM" | "car"> = {
   lat: 1.3011,
@@ -53,6 +53,13 @@ beforeEach(() => {
         });
       }
       if (url.startsWith("/api/nearby")) return nearbyResponse();
+      if (url.startsWith("/api/overview")) {
+        return Response.json({
+          feed: { state: "live", fetchedAt: nowIso(), feedTimestamp: nowIso(), refreshError: null, lastAttemptAt: nowIso() },
+          counts: { carparks: 2120, reporting: 1987, withSpaces: 1412 },
+          points: [[1.3, 103.85, 4]]
+        });
+      }
       return new Response("not found", { status: 404 });
     })
   );
@@ -69,10 +76,34 @@ async function searchAndChoose() {
 }
 
 describe("ParkWhere app", () => {
-  it("starts with a clear prompt and no fake results", () => {
+  it("starts with a clear call to action and no fake results", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: /find hdb parking/i })).toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /park near where you’re going/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /where are you going/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /near me/i })).toBeInTheDocument();
+    expect(document.querySelector(".card")).toBeNull();
+  });
+
+  it("starts a search from a quick pick", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Chinatown" }));
+    expect(await screen.findByText("Blk 1 Known Street")).toBeInTheDocument();
+    expect(screen.getByText("People's Park Complex")).toBeInTheDocument();
+    expect(window.location.search).toContain("lat=1.28413");
+  });
+
+  it("says how many carparks have spaces on the landing map", async () => {
+    render(<App />);
+    expect(await screen.findByText(/carparks have car spaces now/)).toHaveTextContent(/1,412 carparks have car spaces now · 1,987 reporting · updated \d min ago/);
+  });
+
+  it("goes back to the landing page with Clear", async () => {
+    const user = await searchAndChoose();
+    await screen.findByText("Blk 1 Known Street");
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByRole("heading", { name: /park near where you’re going/i })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
   });
 
   it("shows nearby carparks with spaces, their age and a cost estimate", async () => {

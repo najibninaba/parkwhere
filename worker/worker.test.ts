@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import sample from "../fixtures/hdb-availability.sample.json";
-import type { NearbyResponse, SearchResponse } from "../shared/domain";
+import type { NearbyResponse, OverviewResponse, SearchResponse } from "../shared/domain";
 import { getFeed, resetFeedMemory } from "./feed";
 import worker, { type Env } from "./index";
 import { createTestD1 } from "./test-d1";
@@ -153,6 +153,24 @@ describe("Worker routes", () => {
       expect(body.feed.fetchedAt).not.toBeNull();
       expect(body.registry.count).toBeGreaterThan(2000);
       expect(body.carparks.some((carpark) => carpark.id === "TPL")).toBe(false); // loading bay
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("returns every short-term carpark as a map dot with honest counts", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+    try {
+      const response = await call("/api/overview", env());
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as OverviewResponse;
+      expect(body.points.length).toBe(body.counts.carparks);
+      expect(body.counts.carparks).toBeGreaterThan(2000);
+      expect(body.points.every(([lat, lng, code]) => lat > 1.1 && lat < 1.5 && lng > 103.5 && lng < 104.1 && code >= 0 && code <= 4)).toBe(true);
+      // The fixture holds only a handful of carparks, and its records are hours old by now: none count as current.
+      expect(body.counts.withSpaces).toBeLessThanOrEqual(body.counts.reporting);
+      expect(body.points.filter(([, , code]) => code !== 0).length).toBe(body.counts.reporting);
     } finally {
       globalThis.fetch = original;
     }

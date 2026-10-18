@@ -1,5 +1,6 @@
-import { FEED_LIVE_MS, recordFreshness } from "../shared/availability";
-import type { CarAvailability, FeedStatus } from "../shared/domain";
+import { FEED_LIVE_MS } from "../shared/availability";
+import type { FeedStatus } from "../shared/domain";
+export { isCurrent, spaceLevel, type SpaceLevel } from "../shared/levels";
 
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -29,21 +30,6 @@ export function stay(minutes: number): string {
   const m = minutes % 60;
   if (!h) return `${m} min`;
   return m ? `${h} h ${m} min` : `${h} h`;
-}
-
-export type SpaceLevel = "plenty" | "some" | "few" | "full" | "unknown";
-
-/** True when a count is recent enough to describe the carpark "now". Recomputed in the browser so it ages between refreshes. */
-export const isCurrent = (car: CarAvailability, now: number) => recordFreshness(car.recordedAt, new Date(now)) === "current";
-
-/** Visual level for a car count. Thresholds only drive colour; the number is always shown. Old counts are drawn as unknown. */
-export function spaceLevel(car: CarAvailability, now: number = Date.now()): SpaceLevel {
-  if (car.state !== "known" || car.available === null) return "unknown";
-  if (recordFreshness(car.recordedAt, new Date(now)) === "stale") return "unknown";
-  if (car.available === 0) return "full";
-  if (car.available < 10) return "few";
-  if (car.available < 50) return "some";
-  return "plenty";
 }
 
 export function feedSentence(feed: FeedStatus, now: number): { tone: "ok" | "warn" | "bad"; text: string } {
