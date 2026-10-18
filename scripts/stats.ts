@@ -107,7 +107,7 @@ Anonymous counts from Workers Analytics Engine, estimated from sampled data. No 
 |---|---|
 | Lookups (destinations looked up) | ${Math.round(lookups)} |
 | Answered with a current count nearby | ${share(current, lookups)} |
-| Directions hand-offs per lookup | ${share(handoffs, lookups)} (${Math.round(handoffs)} hand-offs) |
+| Directions hand-offs per lookup | ${share(handoffs, lookups)} (${Math.round(handoffs)} ${Math.round(handoffs) === 1 ? "hand-off" : "hand-offs"}) |
 | Visits (page loads) | ${Math.round(visits)} |
 | Lookups per visit | ${visits > 0 ? (lookups / visits).toFixed(2) : "–"} |
 | Average lookup time | ${Math.round(num(latency[0]?.ms))} ms |
@@ -124,7 +124,7 @@ ${table(hdbFeed, "HDB feed at the time", lookups)}
 
 ## Coverage gaps
 
-Rough areas (about 2 km across, "lat,lng" of the south-west corner) where a lookup found no carpark inside the radius. Near me lookups are never included.
+Rough areas (about 2 km across, "lat,lng" of the south-west corner) where a searched, picked or panned-to place had no carpark inside the radius. Near me and links are never included.
 
 ${table(gaps, "Area", total(gaps), true)}
 
