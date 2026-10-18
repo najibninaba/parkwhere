@@ -1,5 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Production: Worker `parkwhere` at parkwhere.bijan.app. Deployed from main after staging passes.
   "name": "parkwhere",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
@@ -21,6 +22,28 @@
   // Per-visitor limit on /api/search, which proxies OneMap once credentials are set.
   "ratelimits": [{ "name": "SEARCH_LIMITER", "namespace_id": "4201", "simple": { "limit": 30, "period": 60 } }],
   "workers_dev": false,
-  "observability": { "enabled": true }
-  // Optional secrets (never commit): DATA_GOV_SG_API_KEY, ONEMAP_EMAIL, ONEMAP_PASSWORD.
+  "observability": { "enabled": true },
+  // Secrets (never commit): ONEMAP_EMAIL, ONEMAP_PASSWORD, LTA_DATAMALL_ACCOUNT_KEY, optional DATA_GOV_SG_API_KEY.
+
+  "env": {
+    // Staging: Worker `parkwhere-staging` at parkwhere-staging.bijan.app with its own D1, so staging and
+    // pull request previews never touch production data. PR previews are preview-alias versions of this
+    // Worker at https://pr-<n>-parkwhere-staging.najibninaba.workers.dev. Build with CLOUDFLARE_ENV=staging.
+    "staging": {
+      "name": "parkwhere-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "parkwhere-staging",
+          "database_id": "3ddd46d4-f766-4927-8369-1c34d67dbf9d",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "routes": [{ "pattern": "parkwhere-staging.bijan.app", "custom_domain": true }],
+      "ratelimits": [{ "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } }],
+      "workers_dev": true,
+      "preview_urls": true,
+      "observability": { "enabled": true }
+    }
+  }
 }
