@@ -320,6 +320,29 @@ describe("ParkWhere app", () => {
     expect(screen.queryByText(/right now/)).not.toBeInTheDocument();
   });
 
+  it("counts a search as one lookup, and the first directions opened for it, anonymously", async () => {
+    const beacons: string[] = [];
+    vi.stubGlobal("navigator", Object.assign(Object.create(navigator), {
+      sendBeacon: (url: string, body: Blob) => {
+        void body.text().then((text) => beacons.push(`${url} ${text}`));
+        return true;
+      }
+    }));
+    const user = await searchAndChoose();
+    const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;
+    const nearbyUrls = vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith("/api/nearby"));
+    expect(nearbyUrls[0]).toContain("&via=search");
+    expect(nearbyUrls[0]).not.toContain("name=");
+    await user.click(within(card).getByText("Directions"));
+    const google = within(card).getByRole("link", { name: "Google Maps" });
+    google.addEventListener("click", (event) => event.preventDefault());
+    await user.click(google);
+    await user.click(within(card).getByRole("link", { name: "Waze" }));
+    await vi.waitFor(() => expect(beacons).toHaveLength(2));
+    expect(JSON.parse(beacons[0].replace("/api/event ", ""))).toEqual({ event: "directions", app: "google", source: "hdb", first: true, display: "browser" });
+    expect(JSON.parse(beacons[1].replace("/api/event ", ""))).toMatchObject({ app: "waze", first: false });
+  });
+
   it("opens directions in external map apps", async () => {
     const user = await searchAndChoose();
     const card = (await screen.findByText("Blk 1 Known Street")).closest("li")!;

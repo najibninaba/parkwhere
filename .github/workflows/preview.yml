@@ -98,6 +98,7 @@ jobs:
           extra=$(find dist/parkwhere -type f ! -name index.js ! -name index.js.map ! -name wrangler.json ! -name '*.webmanifest' ! -name registerSW.js | head -5)
           if [ -n "$extra" ]; then echo "::error::Unexpected files in the Worker build: $extra"; exit 1; fi
           rm -f dist/parkwhere/wrangler.json
+          # No EVENTS binding: previews are never counted in the usage numbers.
           cat > dist/parkwhere/trusted.wrangler.json <<'JSON'
           {
             "name": "parkwhere-staging",
@@ -112,10 +113,13 @@ jobs:
               "run_worker_first": ["/api/*", "/health"]
             },
             "d1_databases": [{ "binding": "DB", "database_name": "parkwhere-staging", "database_id": "3ddd46d4-f766-4927-8369-1c34d67dbf9d" }],
-            "ratelimits": [{ "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } }],
+            "ratelimits": [
+              { "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
+              { "name": "EVENT_LIMITER", "namespace_id": "4204", "simple": { "limit": 60, "period": 60 } }
+            ],
             "workers_dev": true,
             "preview_urls": true,
-            "observability": { "enabled": true }
+            "observability": { "enabled": true, "redact_query_string": true }
           }
           JSON
 

@@ -1,11 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Place } from "../../shared/domain";
+import type { LookupVia } from "../../shared/usage";
 import { ApiError, searchPlaces } from "../api";
 
 export interface Destination {
   name: string;
   lat: number;
   lng: number;
+  /** How it was chosen, for the anonymous lookup count. */
+  via?: LookupVia;
 }
 
 interface Props {
@@ -64,7 +67,7 @@ export function SearchBox({ destination, onChoose, prominent = false }: Props) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setLocating(false);
-        choose({ name: "your location", lat: position.coords.latitude, lng: position.coords.longitude });
+        choose({ name: "your location", lat: position.coords.latitude, lng: position.coords.longitude, via: "near-me" });
       },
       () => {
         setLocating(false);
@@ -97,7 +100,7 @@ export function SearchBox({ destination, onChoose, prominent = false }: Props) {
             setStatus((current) => (current.kind === "results" && current.query !== event.target.value.trim() ? { kind: "loading" } : current));
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && status.kind === "results" && status.query === query.trim() && status.places[0]) choose(status.places[0]);
+            if (event.key === "Enter" && status.kind === "results" && status.query === query.trim() && status.places[0]) choose({ ...status.places[0], via: "search" });
             if (event.key === "Escape") setQuery("");
           }}
           role="combobox"
@@ -130,7 +133,7 @@ export function SearchBox({ destination, onChoose, prominent = false }: Props) {
                 aria-selected={false}
                 key={`${place.name}-${place.lat}-${place.lng}`}
                 className="search-option"
-                onClick={() => choose({ name: place.name, lat: place.lat, lng: place.lng })}
+                onClick={() => choose({ name: place.name, lat: place.lat, lng: place.lng, via: "search" })}
               >
                 <span className="search-option-name">{place.name}</span>
                 <span className="search-option-address">

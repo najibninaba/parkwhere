@@ -9,10 +9,47 @@ import { OSM_AVAILABILITY, osmRegistry, withoutDuplicates } from "../shared/osm"
 import osmFile from "./osm-carparks.json";
 import registryFile from "./registry.json";
 import { SearchUnavailable, onemapConfigured, search, type SearchEnv } from "./search";
+import {
+  directionsPoint,
+  errorPoint,
+  isLookupVia,
+  isMobile,
+  lookupPoint,
+  parseBeacon,
+  referrerHost,
+  searchPoint,
+  usageBlocked,
+  visitPoint,
+  type DataPoint
+} from "../shared/usage";
 
 export interface Env extends FeedEnv, SearchEnv {
   ASSETS: Fetcher;
   SEARCH_LIMITER?: RateLimit;
+  /** Anonymous usage counts (shared/usage.ts). Absent in PR previews and tests, where nothing is counted. */
+  EVENTS?: AnalyticsEngineDataset;
+  EVENT_LIMITER?: RateLimit;
+}
+
+/** Writes one usage data point. Counting never fails or slows a request. */
+function count(env: Env, point: DataPoint) {
+  try {
+    env.EVENTS?.writeDataPoint(point);
+  } catch (error) {
+    console.warn("ParkWhere usage count failed", error instanceof Error ? error.message : error);
+  }
+}
+
+const country = (request: Request) => (typeof request.cf?.country === "string" ? request.cf.country : "");
+
+/**
+ * The first API request of a page load carries first=1, app=1 when ParkWhere runs as an installed app,
+ * and the referring site's host name. That request counts as a visit.
+ */
+function countVisit(request: Request, url: URL, env: Env) {
+  if (url.searchParams.get("first") !== "1" || usageBlocked(request.headers)) return;
+  const display = url.searchParams.get("app") === "1" ? "standalone" : "browser";
+  count(env, visitPoint(display, isMobile(request.headers), country(request), referrerHost(url.searchParams.get("ref"), url.hostname)));
 }
 
 const registry = registryFile as RegistryFile;
@@ -68,7 +105,8 @@ async function readFeeds(env: Env, ctx: ExecutionContext, now: Date) {
   };
 }
 
-async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function nearby(request: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const started = Date.now();
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
   const radiusParam = Number(url.searchParams.get("radius") ?? DEFAULT_RADIUS_M);
@@ -89,6 +127,25 @@ async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
     withinRadius: result.withinRadius,
     carparks: result.carparks
   };
+  countVisit(request, url, env);
+  // Only the first request for a destination says how it was chosen; refreshes and radius changes don't,
+  // so they aren't counted as lookups.
+  const via = url.searchParams.get("via");
+  if (isLookupVia(via) && !usageBlocked(request.headers)) {
+    count(env, lookupPoint({
+      via,
+      radiusM,
+      carparks: result.carparks,
+      withinRadius: result.withinRadius,
+      origin: { lat, lng },
+      hdbFeed: feeds.hdbStatus.state,
+      ltaFeed: feeds.ltaStatus?.state ?? null,
+      display: url.searchParams.get("app") === "1" ? "standalone" : "browser",
+      mobile: isMobile(request.headers),
+      country: country(request),
+      latencyMs: Date.now() - started
+    }));
+  }
   return json(body);
 }
 
@@ -96,7 +153,8 @@ async function nearby(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
  * Every short-term carpark as a dot for the landing map. Only HDB counts recorded in the last 15
  * minutes are coloured or counted as "reporting"; LTA/URA counts have no time, so their dots are grey.
  */
-async function overview(env: Env, ctx: ExecutionContext): Promise<Response> {
+async function overview(request: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  countVisit(request, url, env);
   const now = new Date();
   const feeds = await readFeeds(env, ctx, now);
   let reporting = 0;
@@ -122,12 +180,37 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
     const { success } = await env.SEARCH_LIMITER.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
     if (!success) return problem(429, "Too many searches. Try again in a minute.");
   }
+  const started = Date.now();
+  const counted = !usageBlocked(request.headers);
   try {
-    return json(await search(env, carparks, query), 200, "private, max-age=300");
+    const body = await search(env, carparks, query);
+    if (counted) count(env, searchPoint(body.source, body.results.length, true, Date.now() - started));
+    return json(body, 200, "private, max-age=300");
   } catch (error) {
+    if (counted) count(env, searchPoint("failed", 0, false, Date.now() - started));
     console.warn("ParkWhere search failed", error instanceof Error ? error.message : error);
     return problem(502, error instanceof SearchUnavailable ? "Place search is unavailable right now." : "Place search failed.");
   }
+}
+
+/**
+ * Usage events from the app (only "directions" today), sent with navigator.sendBeacon. Same-origin only,
+ * rate-limited per visitor, at most 1 KB, and checked against an allowlist; anything else is dropped.
+ * Always answers 204, so the page learns nothing either way.
+ */
+async function event(request: Request, url: URL, env: Env): Promise<Response> {
+  const done = new Response(null, { status: 204 });
+  const site = request.headers.get("sec-fetch-site");
+  const origin = request.headers.get("origin");
+  if (site ? site !== "same-origin" : origin !== url.origin) return done;
+  if (usageBlocked(request.headers) || Number(request.headers.get("content-length") ?? 0) > 1024) return done;
+  if (env.EVENT_LIMITER) {
+    const { success } = await env.EVENT_LIMITER.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
+    if (!success) return done;
+  }
+  const beacon = parseBeacon(await request.text());
+  if (beacon) count(env, directionsPoint(beacon, country(request)));
+  return done;
 }
 
 async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -156,15 +239,17 @@ async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/event" && request.method === "POST") return await event(request, url, env).catch(() => new Response(null, { status: 204 }));
     if (request.method !== "GET" && request.method !== "HEAD") return problem(405, "Method not allowed");
     try {
-      if (url.pathname === "/api/nearby") return await nearby(url, env, ctx);
-      if (url.pathname === "/api/overview") return await overview(env, ctx);
+      if (url.pathname === "/api/nearby") return await nearby(request, url, env, ctx);
+      if (url.pathname === "/api/overview") return await overview(request, url, env, ctx);
       if (url.pathname === "/api/search") return await searchRoute(request, url, env);
       if (url.pathname === "/health") return await health(env, ctx);
       if (url.pathname.startsWith("/api/")) return problem(404, "Not found");
     } catch (error) {
       console.error("ParkWhere request failed", url.pathname, error);
+      count(env, errorPoint(url.pathname, 500));
       return problem(500, "Something went wrong on our side.");
     }
     return env.ASSETS.fetch(request);

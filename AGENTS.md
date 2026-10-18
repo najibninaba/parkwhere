@@ -14,6 +14,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 | `pnpm run deploy:staging` / `pnpm run deploy` | Manual deploys. Normally the `Deploy` workflow does this: main goes to staging, then to production once staging passes. |
 | `pnpm media [url]` | Regenerates the README screenshots, walkthrough and diagram images in `docs/media`. Needs a running app. |
 | `pnpm registry` | Refreshes `worker/registry.json` from data.gov.sg. Review the diff, then commit. |
+| `pnpm stats [--days N \| --month YYYY-MM --write]` | Usage report from Analytics Engine. Needs `CLOUDFLARE_ACCOUNT_ID` and a read-only `CLOUDFLARE_ANALYTICS_TOKEN` in `.dev.vars`. |
 | `pnpm osm [--refresh]` | Refreshes `worker/osm-carparks.json` from OpenStreetMap (Geofabrik extract, cached in `.cache/osm/`). Needs `osmium` (`brew install osmium-tool`). Review the diff, then commit. |
 | `wrangler d1 migrations apply parkwhere-production --local` | Run once before the first `pnpm dev` |
 
@@ -22,6 +23,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 - `shared/` holds pure domain logic with no I/O. It is imported by both the Worker and the app, and every rule here has a test next to it.
   - `availability.ts`: normalises the feed, rates record freshness and builds the feed status
   - `lta.ts`: normalises LTA DataMall (LTA and URA car rows only) and its honest availability, with no time and no total
+  - `usage.ts`: anonymous usage counts (lookups, visits, directions, search, errors) and what may be recorded
   - `osm.ts`: picks public carparks from OpenStreetMap features (build time) and turns them into carparks with no count (run time)
   - `levels.ts`: dot and count colour levels; the overview only colours current, dated HDB counts
   - `nearby.ts`: distance, radius search and the fallback when nothing is in range
@@ -50,6 +52,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 8. Don't add accounts, payments, bookings, predictions, entrance photos or manual walking routes.
 9. LTA DataMall counts have no time and no total. Never colour them as current, never write "now" about them, and never price them. HDB rows from LTA are dropped in favour of data.gov.sg's.
 10. OpenStreetMap carparks have no count and no price. Keep one only when it's explicitly tagged `access=yes`, `customers` or `permissive`: a missing tag never means public. Heavy-vehicle, loading, drop-off, season-only and HDB-run parking is left out. One within 80 m of an HDB, LTA or URA carpark, with the same name as an LTA or URA carpark within 300 m, or unnamed within 250 m of one, is the same carpark and is left out. A mapped entrance is still unverified, so the card says so.
+11. Usage counts stay anonymous: no cookies, IDs, IP addresses, search text or exact locations, and nothing that links visits. A destination's area (0.02°) is recorded only for gap lookups and never for Near me. Respect Global Privacy Control and Do Not Track, skip automated browsers, and keep the README's Privacy section and the footer in step with what `shared/usage.ts` records.
 
 ## External services
 
@@ -57,6 +60,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 - OneMap search needs a token according to its docs. It turns on only when the `ONEMAP_EMAIL` and `ONEMAP_PASSWORD` secrets are set; the token is cached in D1 for 3 days. OneMap tiles need no token but must show the OneMap logo and attribution.
 - Attribution under the Singapore Open Data Licence, and the OpenStreetMap credit, are in `src/components/Footer.tsx`.
 - OpenStreetMap data comes from Geofabrik's extract at build time only; the Worker never calls OpenStreetMap. `worker/osm-carparks.json` is under the Open Database Licence (ODbL 1.0), not MIT.
+- Workers Analytics Engine holds the usage counts (binding `EVENTS`: `parkwhere_events`, staging `parkwhere_staging_events`; previews have none, so every write must allow for it being absent). Data is kept for 3 months; `pnpm stats --month YYYY-MM --write` keeps summaries in `docs/stats/`. Logs redact query strings.
 - LTA DataMall (`LTA_DATAMALL_ACCOUNT_KEY`) adds mall and URA carparks. Without the key they're left out, and nothing else changes. URA's own API (rates) isn't integrated: it needs a separate URA access key.
 
 ## Environments and pull requests

@@ -40,6 +40,10 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
         <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Database Licence</a>.
       </p>
       <p>Maps © OneMap contributors, Singapore Land Authority.</p>
+      <h2 className="label">Privacy</h2>
+      <p>
+        ParkWhere counts lookups, directions opened and errors, to see whether it's useful. It uses no cookies and doesn't record IDs, IP addresses, search text or exact locations. Nothing is counted when your browser sends Global Privacy Control or Do Not Track.
+      </p>
       <p>ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.</p>
     </footer>
   );
