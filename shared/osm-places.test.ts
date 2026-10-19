@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import sample from "../fixtures/osm-places.sample.json";
 import type { OsmCarpark, OsmFile, RegistryCarpark } from "./domain";
 import { distanceM } from "./nearby";
-import { OSM_AVAILABILITY, centroid, distanceToGeometry, expandAbbreviations, interiorPoint, osmId, osmRegistry, placeCarparkTitle, withoutDuplicates, type OsmFeature } from "./osm";
+import { OSM_AVAILABILITY, centroid, distanceToGeometry, expandAbbreviations, interiorPoint, osmId, osmRegistry, placeCarparkTitle, polygons, withoutDuplicates, type OsmFeature } from "./osm";
 import { BIG_BOX_MIN_M2, EXCLUDED, GENERIC_PLACE_NAMES, TITLE_APART_M, areaM2, namedAfter, placeOf, possibleVisitorParking, selectPlaceCarparks, type MapFeature } from "./osm-places";
 import { estimateCost } from "./tariff";
 
@@ -560,9 +560,39 @@ describe("big-box stores and retail areas (real features, checked 19 Oct 2026)",
     expect(alone.places[0]!.evidence).not.toContain("node/11731444682");
     const outside = parking.filter((item) => osmId(item) === "node/11731444682");
     expect(run({ places: [retailPark], parking: outside }).places).toEqual([]);
-    // A store with the evidence wins even when it's only next to the store and inside the park.
-    expect(run({ places: [retailPark, giant] }).places.map((item) => item.placeName)).toEqual(expect.arrayContaining(["Giant Hypermarket"]));
+    // A store wins a carpark even when it's only next to the store and inside the park. The park keeps IKEA's
+    // entrances when IKEA isn't there to take them.
+    expect(run({ places: [retailPark, giant] }).places.map((item) => `${item.placeName}: ${item.evidence.join(", ")}`)).toEqual([
+      "Tampines Retail Park: node/8655176324, node/13294083098",
+      "Giant Hypermarket: way/1557879658"
+    ]);
     expect(run({ places: [retailPark, ikea, giant] }).places.map((item) => item.placeName).sort()).toEqual(["Giant Hypermarket", "IKEA"]);
+  });
+
+  it("doesn't give a retail area an entrance on its edge that belongs to a carpark outside it", () => {
+    // Real tags on simple shapes: a 110 m square area, an entrance 5 m inside its east edge, and a lot 11 m outside.
+    const box = (west: number, south: number, east: number, north: number) =>
+      ({ type: "Polygon", coordinates: [[[west, south], [east, south], [east, north], [west, north], [west, south]]] }) as OsmFeature["geometry"];
+    const area = { ...retailPark, geometry: box(103.93, 1.37, 103.931, 1.371) } as OsmFeature;
+    const entrance = { ...feature("node/8655176324"), geometry: { type: "Point", coordinates: [103.93095, 1.3704] } } as OsmFeature;
+    const lot = (west: number, east: number) => ({ ...feature("way/1557879658"), geometry: box(west, 1.3702, east, 1.3706) }) as OsmFeature;
+    const bare = { roads: [], hdb: [], shown: [], buildings: [], construction: [] };
+    expect(run({ ...bare, places: [area], parking: [lot(103.9311, 103.9316), entrance] }).places).toEqual([]);
+    // The same entrance to a lot inside the area is the area's.
+    expect(run({ ...bare, places: [area], parking: [lot(103.9303, 103.9308), entrance] }).places).toEqual([
+      expect.objectContaining({ placeName: "Tampines Retail Park", relation: "at", atEntrance: true, lat: 1.3704, lng: 103.93095 })
+    ]);
+  });
+
+  it("measures a store without its courtyard, and keeps a standalone store tagged with a level", () => {
+    const outer = polygons(ikea.geometry)[0]![0]!;
+    // A hole almost as big as the building: what's left is under 3,000 m².
+    const middle = centroid(ikea.geometry);
+    const hole = outer.map(([x, y]) => [middle.lng + (x - middle.lng) * 0.97, middle.lat + (y - middle.lat) * 0.97]);
+    const ring = { ...ikea, geometry: { type: "Polygon", coordinates: [outer, hole] } } as OsmFeature;
+    expect(areaM2(ring.geometry)).toBeLessThan(BIG_BOX_MIN_M2);
+    expect(placeOf(ring, TODAY)).toBeNull();
+    expect(placeOf(withTags(ikea, { level: "0" }), TODAY)).toMatchObject({ kind: "store" });
   });
 
   it("takes only big stores of the listed kinds, mapped as a building or area of their own", () => {
@@ -589,6 +619,12 @@ describe("big-box stores and retail areas (real features, checked 19 Oct 2026)",
     const mall = withTags(retailPark, { landuse: undefined, shop: "mall", name: "Retail Park Mall" });
     const result = run({ places: [mall, ikea] });
     expect(result.places.map((item) => item.placeName)).toEqual(["Retail Park Mall"]);
+    // A larger mall that only overlaps the store (a long strip across its middle) doesn't hold it.
+    const { lat, lng } = interiorPoint(ikea.geometry);
+    const strip = { type: "Polygon", coordinates: [[[lng - 0.0001, lat - 0.005], [lng + 0.0001, lat - 0.005], [lng + 0.0001, lat + 0.005], [lng - 0.0001, lat + 0.005], [lng - 0.0001, lat - 0.005]]] };
+    const overlapping = { ...mall, geometry: strip } as OsmFeature;
+    expect(areaM2(overlapping.geometry)).toBeGreaterThan(areaM2(ikea.geometry));
+    expect(run({ places: [overlapping, ikea] }).places.map((item) => item.placeName)).toContain("IKEA");
   });
 
   it("leaves out food centres, markets and petrol stations mapped as retail areas or shops", () => {
