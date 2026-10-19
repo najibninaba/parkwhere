@@ -181,14 +181,14 @@ export interface OsmCarpark {
   atEntrance: boolean;
 }
 
-export type OsmPlaceKind = "mall" | "venue" | "attraction" | "terminal" | "park" | "sports";
+export type OsmPlaceKind = "mall" | "venue" | "attraction" | "terminal" | "store" | "retail" | "park" | "sports";
 /** "at": the carpark is mapped inside the place's outline. "next-to": outside it, within 30 m or named after the place. */
 export type OsmPlaceRelation = "at" | "next-to";
 
 /**
- * A carpark mapped at a public place (a mall, venue, attraction, terminal, park or sports ground) that has no
- * access tag, as written by scripts/sync-osm.ts. It says only that a carpark is mapped there: visitor access
- * is unknown and always shown as unconfirmed, never as public. One per place, and one mapped carpark never
+ * A carpark mapped at a public place (a mall, venue, attraction, terminal, big-box store, retail area, park or
+ * sports ground) that has no access tag, as written by scripts/sync-osm.ts. It says only that a carpark is
+ * mapped there: access is unknown, and it's never shown as public. One per place, and one mapped carpark never
  * makes more than one entry.
  */
 export interface OsmPlaceCarpark {

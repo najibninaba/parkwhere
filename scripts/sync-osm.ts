@@ -12,7 +12,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { OsmFile, RegistryFile } from "../shared/domain.ts";
 import { selectOsmCarparks, type OsmFeature } from "../shared/osm.ts";
-import { selectPlaceCarparks, type MapFeature } from "../shared/osm-places.ts";
+import { BIG_BOX_SHOPS, selectPlaceCarparks, type MapFeature } from "../shared/osm-places.ts";
 import { pathToFileURL } from "node:url";
 
 /** osmium tags-filter expressions for the place kinds shared/osm-places.ts knows. */
@@ -21,7 +21,9 @@ const PLACE_FILTERS = [
   "nwr/amenity=conference_centre,exhibition_centre",
   "nwr/tourism=attraction,museum,zoo,theme_park,aquarium,gallery",
   "nwr/aeroway=terminal",
-  "nwr/leisure=park,garden,nature_reserve,sports_centre,stadium,water_park"
+  "nwr/leisure=park,garden,nature_reserve,sports_centre,stadium,water_park",
+  `nwr/shop=${BIG_BOX_SHOPS.join(",")}`,
+  "nwr/landuse=retail"
 ];
 
 const EXTRACT_URL = "https://download.geofabrik.de/asia/malaysia-singapore-brunei-latest.osm.pbf";

@@ -101,7 +101,7 @@ function directionsHint(carpark: NearbyCarpark): string {
     const point = osm.atEntrance
       ? "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked."
       : "Goes to a spot on a carpark mapped on OpenStreetMap, which ParkWhere hasn't checked. It may not be the entrance.";
-    return `${point} Visitor access isn't confirmed, so check the signs when you get there.`;
+    return `${point} Check the signs when you get there.`;
   }
   return osm?.atEntrance
     ? "Goes to an entrance mapped on OpenStreetMap, which ParkWhere hasn't verified. Look for the signs when you get there."
@@ -111,11 +111,10 @@ function directionsHint(carpark: NearbyCarpark): string {
 export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, now }: Props) {
   const [open, setOpen] = useState(false);
   const source = carpark.source ?? "hdb";
-  // A carpark mapped at a public place has no access tag: it's never shown as public.
+  // A carpark mapped at a public place has no access tag: it's never shown as public, only as mapped.
   const place = carpark.osm?.place;
   const tags = source === "osm" ? [
     "Mapped on OpenStreetMap",
-    place ? "Visitor access not confirmed" : null,
     carpark.osm?.access === "customers" ? "Customers only" : null,
     carpark.gantryHeightM ? `Height limit ${carpark.gantryHeightM} m` : null
   ].filter((tag): tag is string => Boolean(tag)) : source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [

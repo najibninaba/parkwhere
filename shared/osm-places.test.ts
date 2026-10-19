@@ -3,7 +3,7 @@ import sample from "../fixtures/osm-places.sample.json";
 import type { OsmCarpark, OsmFile, RegistryCarpark } from "./domain";
 import { distanceM } from "./nearby";
 import { OSM_AVAILABILITY, centroid, distanceToGeometry, expandAbbreviations, interiorPoint, osmId, osmRegistry, placeCarparkTitle, withoutDuplicates, type OsmFeature } from "./osm";
-import { EXCLUDED, GENERIC_PLACE_NAMES, namedAfter, placeOf, possibleVisitorParking, selectPlaceCarparks, type MapFeature } from "./osm-places";
+import { BIG_BOX_MIN_M2, EXCLUDED, GENERIC_PLACE_NAMES, TITLE_APART_M, areaM2, namedAfter, placeOf, possibleVisitorParking, selectPlaceCarparks, type MapFeature } from "./osm-places";
 import { estimateCost } from "./tariff";
 
 const TODAY = "2026-10-17";
@@ -55,9 +55,11 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
       "Carpark mapped at Bedok Mall: at",
       "Carpark mapped at Gardens by the Bay East: at",
       "Carpark mapped at Windsor Nature Park: at",
+      "Carpark mapped next to Giant Hypermarket: next-to",
       "Carpark mapped at i12 Katong: at",
       "Carpark mapped at Peninsula Plaza: at",
       "Carpark mapped at Tampines Mall: at",
+      "Carpark mapped at IKEA: at",
       "Carpark mapped next to Paragon: next-to",
       "Carpark mapped at Square 2: at",
       "Carpark mapped at Singapore Expo: at",
@@ -65,6 +67,7 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
       "Carpark mapped at Changi Beach Park (Carpark 1): at",
       "Carpark mapped at Choa Chu Kang Park (SAFRA Choa Chu Kang): at",
       "Carpark mapped at Jewel Changi Airport: at",
+      "Carpark mapped at IKEA: at",
       "Carpark mapped at Hampstead Wetlands Park: at",
       "Carpark mapped at Sengkang Grand Mall: at",
       "Carpark mapped at Causeway Point: at",
@@ -320,7 +323,7 @@ describe("hand-check fixes (real features, checked 19 Oct 2026)", () => {
   });
 
   it("excludes only what the map can't show, by id and with a reason", () => {
-    expect(Object.keys(EXCLUDED).sort()).toEqual(["node/11823943799", "relation/2746776"]);
+    expect(Object.keys(EXCLUDED).sort()).toEqual(["node/11823943799", "relation/2746776", "way/1149136196"]);
     // Kranji Racecourse closed in October 2024, but its tags still say it's open.
     expect(EXCLUDED["relation/2746776"]).toMatch(/Kranji Racecourse: closed/);
     expect(placeOf(feature("relation/2746776"), TODAY)).toBeNull();
@@ -357,12 +360,18 @@ describe("hand-check fixes (real features, checked 19 Oct 2026)", () => {
     expect(alone.map(placeCarparkTitle)).toEqual(["Carpark mapped at Jewel Changi Basement"]);
   });
 
-  it("never gives two cards the same title", () => {
+  it("never gives two cards that can be listed together the same title", () => {
     // Changi Beach Park is mapped as two areas, each with its own named carparks.
     expect(placeCarparkTitle(entry("way/174717943")!)).toBe("Carpark mapped at Changi Beach Park (Carpark 6)");
     expect(placeCarparkTitle(entry("way/174717944")!)).toBe("Carpark mapped at Changi Beach Park (Carpark 1)");
-    const titles = selected.places.map(placeCarparkTitle);
-    expect(new Set(titles).size).toBe(titles.length);
+    for (const a of selected.places) {
+      for (const b of selected.places) {
+        if (a !== b && distanceM(a, b) <= TITLE_APART_M) expect(placeCarparkTitle(a)).not.toBe(placeCarparkTitle(b));
+      }
+    }
+    // Two stores of one brand far apart keep the plain name: they never meet in one list of results.
+    expect([entry("way/166723949"), entry("way/736484880")].map((item) => placeCarparkTitle(item!))).toEqual(["Carpark mapped at IKEA", "Carpark mapped at IKEA"]);
+    expect(distanceM(entry("way/166723949")!, entry("way/736484880")!)).toBeGreaterThan(TITLE_APART_M);
     // A name that isn't repeated keeps the plain title.
     expect(run({ places: [feature("way/174717944")] }).places.map(placeCarparkTitle)).toEqual(["Carpark mapped at Changi Beach Park"]);
     // When the carparks have no names, one card is kept and the other is left out.
@@ -512,6 +521,88 @@ describe("possibleVisitorParking", () => {
     // An entrance mapped as an area isn't used (way/1264215746 is one).
     const mall = feature("way/1489454435");
     expect(possibleVisitorParking({ ...entrance, geometry: mall.geometry }, TODAY)).toBe(false);
+  });
+});
+
+describe("big-box stores and retail areas (real features, checked 19 Oct 2026)", () => {
+  const retailPark = feature("way/34408623");
+  const ikea = feature("way/166723949");
+  const courts = feature("way/34408616");
+  const giant = feature("way/34408631");
+  const has = (result: { places: { id: string }[] }, id: string) => result.places.some((place) => place.id === id);
+
+  it("lists IKEA and Giant in Tampines Retail Park, each under its own name", () => {
+    // IKEA's two multi-storey entrances are inside both IKEA and the retail park: the store names the card.
+    expect(entry("way/166723949")).toMatchObject({
+      placeName: "IKEA",
+      placeKind: "store",
+      relation: "at",
+      atEntrance: true,
+      parking: "multi-storey",
+      access: "unknown",
+      evidence: ["node/8655176324", "node/13294083098"]
+    });
+    // The surface lot inside the park, 8 m outside Giant's building, goes to Giant.
+    expect(entry("way/34408631")).toMatchObject({ placeName: "Giant Hypermarket", placeKind: "store", relation: "next-to", evidence: ["way/1557879658"] });
+    // The park keeps nothing for itself: every carpark inside it is a store's.
+    expect(has(selected, "way/34408623")).toBe(false);
+    expect(selected.removed.shared).toContain("way/34408623");
+    // Courts has no carpark mapped within 30 m: its rooftop ramp isn't on the map, and IKEA's entrances are 73 m away.
+    expect(placeOf(courts, TODAY)).toMatchObject({ kind: "store", tier: "venue" });
+    expect(has(selected, "way/34408616")).toBe(false);
+  });
+
+  it("gives a retail area the carparks inside it when no store is there, but nothing outside it", () => {
+    // Without the stores, the park itself has IKEA's entrances and the lot.
+    const alone = run({ places: [retailPark, courts] });
+    expect(alone.places).toEqual([expect.objectContaining({ id: "way/34408623", placeName: "Tampines Retail Park", placeKind: "retail", relation: "at" })]);
+    // The entrance 49 m outside the park (node/11731444682) never counts for it.
+    expect(alone.places[0]!.evidence).not.toContain("node/11731444682");
+    const outside = parking.filter((item) => osmId(item) === "node/11731444682");
+    expect(run({ places: [retailPark], parking: outside }).places).toEqual([]);
+    // A store with the evidence wins even when it's only next to the store and inside the park.
+    expect(run({ places: [retailPark, giant] }).places.map((item) => item.placeName)).toEqual(expect.arrayContaining(["Giant Hypermarket"]));
+    expect(run({ places: [retailPark, ikea, giant] }).places.map((item) => item.placeName).sort()).toEqual(["Giant Hypermarket", "IKEA"]);
+  });
+
+  it("takes only big stores of the listed kinds, mapped as a building or area of their own", () => {
+    expect(areaM2(ikea.geometry)).toBeGreaterThan(20_000);
+    for (const shop of ["furniture", "electronics", "department_store", "supermarket", "doityourself", "hardware", "garden_centre", "wholesale"]) {
+      expect([shop, placeOf(withTags(ikea, { shop }), TODAY)?.kind]).toEqual([shop, "store"]);
+    }
+    // Car dealers' parking is the showroom's; other shops aren't big-box stores.
+    expect(placeOf(withTags(ikea, { shop: "car" }), TODAY)).toBeNull();
+    expect(placeOf(withTags(ikea, { shop: "clothes" }), TODAY)).toBeNull();
+    // Far East Flora Centre (2,900 m²) is too small, though entrances are mapped beside it.
+    const flora = feature("way/1188401266");
+    expect(areaM2(flora.geometry)).toBeLessThan(BIG_BOX_MIN_M2);
+    expect(placeOf(flora, TODAY)).toBeNull();
+    expect(run({ places: [flora] }).places).toEqual([]);
+    expect(run({ places: [withTags(ikea, { name: "Far East Flora Centre" })] }).places).toHaveLength(1);
+    // FairPrice Xtra in Parkway Parade is a room inside the mall (indoor=room, level 2): the mall's card covers it.
+    expect(areaM2(feature("way/746049621").geometry)).toBeGreaterThan(BIG_BOX_MIN_M2);
+    expect(placeOf(feature("way/746049621"), TODAY)).toBeNull();
+  });
+
+  it("leaves a store inside a mall to the mall", () => {
+    // IKEA's outline tagged as a mall too large to be inside, and a store inside it.
+    const mall = withTags(retailPark, { landuse: undefined, shop: "mall", name: "Retail Park Mall" });
+    const result = run({ places: [mall, ikea] });
+    expect(result.places.map((item) => item.placeName)).toEqual(["Retail Park Mall"]);
+  });
+
+  it("leaves out food centres, markets and petrol stations mapped as retail areas or shops", () => {
+    // East Coast Lagoon Food Village is tagged only landuse=retail; its name says what it is.
+    expect(placeOf(feature("way/44122372"), TODAY)).toBeNull();
+    expect(placeOf(withTags(feature("way/44122372"), { name: "East Coast Lagoon Village" }), TODAY)).toMatchObject({ kind: "retail", tier: "retail-area" });
+    for (const tags of [{ amenity: "food_court" }, { amenity: "marketplace" }, { amenity: "fuel" }, { name: "Adam Food Centre" }, { name: "Pasar 216 Bedok Central" }, { name: "Tekka Market" }]) {
+      expect([tags, placeOf(withTags(retailPark, tags), TODAY)]).toEqual([tags, null]);
+      expect([tags, placeOf(withTags(ikea, tags), TODAY)]).toEqual([tags, null]);
+    }
+    // A retail area that holds homes too may have the residents' carparks.
+    expect(placeOf(withTags(retailPark, { name: "Bedok Mall/Bedok Residences" }), TODAY)).toBeNull();
+    // Bedok Corner is a food centre tagged only landuse=retail, with a coupon carpark: left out by id.
+    expect(EXCLUDED["way/1149136196"]).toMatch(/food centre/);
   });
 });
 
