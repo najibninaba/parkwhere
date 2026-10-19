@@ -53,8 +53,10 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
   it("lists one carpark per place, and only places with one mapped there", () => {
     expect(selected.places.map((place) => `${placeCarparkTitle(place)}: ${place.relation}`)).toEqual([
       "Carpark mapped at Bedok Mall: at",
+      "Carpark mapped at Gardens by the Bay East: at",
       "Carpark mapped at Windsor Nature Park: at",
       "Carpark mapped at i12 Katong: at",
+      "Carpark mapped at Peninsula Plaza: at",
       "Carpark mapped at Tampines Mall: at",
       "Carpark mapped next to Paragon: next-to",
       "Carpark mapped at Square 2: at",
@@ -115,8 +117,8 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
     expect(run({ buildings: [] }).places.find((place) => place.id === "way/152598430")?.evidence).toEqual(["node/7037935683"]);
     // Funan's two untagged entrances are 5 and 9 m from Funan but under 5 m from the office at 100 High Street.
     expect(entry("way/432515092")).toBeUndefined();
-    // (node/612392167 is also on a parking aisle tagged access=no, so only the other one is left.)
-    expect(run({ buildings: [] }).places.find((place) => place.id === "way/432515092")).toMatchObject({ relation: "next-to", evidence: ["node/6045374651"] });
+    // (node/612392167 is on a parking aisle tagged access=no; an aisle's tag doesn't decide who may drive in.)
+    expect(run({ buildings: [] }).places.find((place) => place.id === "way/432515092")).toMatchObject({ relation: "next-to", evidence: ["node/612392167", "node/6045374651"] });
     // And Funan's exit is never used.
     expect(possibleVisitorParking(feature("node/12525830322"), TODAY)).toBe(false);
   });
@@ -265,6 +267,58 @@ describe("hand-check fixes (real features, checked 19 Oct 2026)", () => {
     expect(has(run({ roads: opened }), "way/54519182")).toBe(true);
   });
 
+  it("leaves out a carpark mapped as a point on a private driveway", () => {
+    // Sengkang Grand Mall's point is on way/1152354273, an untagged driveway. Tagged private, it's left out.
+    expect(road("way/1152354273").properties).toMatchObject({ highway: "service", service: "driveway" });
+    const closed = roads.map((item) => (osmId(item as OsmFeature) === "way/1152354273" ? retag(item, { access: "private" }) : item));
+    expect(has(run({ roads: closed }), "way/1122039326")).toBe(false);
+  });
+
+  it("finds a road crossing a carpark between two nodes outside it, wherever its nodes are", () => {
+    // A road straight through Hampstead Wetlands Park's lot, with both ends outside it, and the same road with
+    // an extra node in the middle of the lot: the verdict and the way in are the same.
+    const through = (tags: Record<string, string>, nodes: [number, number][]): MapFeature => ({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: nodes },
+      properties: { "@type": "way", "@id": 3, highway: "service", ...tags }
+    });
+    const ends: [number, number][] = [[103.869, 1.41033], [103.8695, 1.41033]];
+    const withMiddle: [number, number][] = [ends[0], [103.86923, 1.41033], ends[1]];
+    const hampstead = (road: MapFeature) => run({ roads: [road] }).places.find((place) => place.id === "way/877498629");
+    for (const nodes of [ends, withMiddle]) {
+      expect(hampstead(through({ access: "private" }, nodes))).toBeUndefined();
+      const open = hampstead(through({}, nodes))!;
+      expect(distanceToGeometry(open, feature("way/895588282").geometry)).toBeLessThan(1);
+    }
+    expect(hampstead(through({}, ends))).toEqual(hampstead(through({}, withMiddle)));
+  });
+
+  it("closes a place only when a construction site larger than it holds it", () => {
+    // Gardens by the Bay East's middle is inside the Bay East Garden site (Founders' Memorial), about half its
+    // size. The park is open; PARKTOWN is a mall inside a much larger site.
+    const site = construction.find((item) => osmId(item) === "way/884118657")!;
+    const park = feature("relation/10247957");
+    expect(distanceToGeometry(interiorPoint(park.geometry), site.geometry)).toBe(0);
+    expect(has(selected, "relation/10247957")).toBe(true);
+    const grown = { ...site, geometry: { type: "Polygon", coordinates: [[[103.85, 1.27], [103.89, 1.27], [103.89, 1.31], [103.85, 1.31], [103.85, 1.27]]] } } as OsmFeature;
+    expect(has(run({ construction: [grown] }), "relation/10247957")).toBe(false);
+  });
+
+  it("doesn't let a parking aisle's access tag decide an entrance", () => {
+    // Peninsula Plaza's only entrance is on a 9 m parking aisle tagged access=private, as many aisles are to keep
+    // routers out. The carpark is the mall's public one.
+    expect(road("way/1388549604").properties).toMatchObject({ access: "private", service: "parking_aisle" });
+    expect(entry("way/46594832")).toMatchObject({ evidence: ["node/12853402280"], atEntrance: true });
+    // A driveway tagged private still rules an entrance out (Sim Lim Square).
+    expect(has(selected, "way/30527021")).toBe(false);
+  });
+
+  it("ignores roads that aren't built: proposed, planned or gone", () => {
+    const parkTown = (highway: string) =>
+      has(run({ construction: [], roads: roads.map((item) => (osmId(item as OsmFeature) === "way/1367936292" ? retag(item, { highway, construction: undefined }) : item)) }), "relation/18841366");
+    for (const highway of ["proposed", "planned", "abandoned"]) expect([highway, parkTown(highway)]).toEqual([highway, true]);
+  });
+
   it("excludes only what the map can't show, by id and with a reason", () => {
     expect(Object.keys(EXCLUDED).sort()).toEqual(["node/11823943799", "relation/2746776"]);
     // Kranji Racecourse closed in October 2024, but its tags still say it's open.
@@ -288,6 +342,9 @@ describe("hand-check fixes (real features, checked 19 Oct 2026)", () => {
     for (const tags of [{ location: "underground" }, { underground: "yes" }, { level: "-1" }, { layer: "-2" }]) {
       expect([tags, placeOf(withTags(aboveGround, tags), TODAY)]).toEqual([tags, null]);
     }
+    // A mall on several levels, some above ground, isn't underground.
+    expect(placeOf(withTags(aboveGround, { level: "-1;0;1" }), TODAY)).not.toBeNull();
+    expect(placeOf(withTags(aboveGround, { level: "-2;-1" }), TODAY)).toBeNull();
     // A mall building with floors below ground is still a place: Jewel Changi Basement is building=commercial, layer -1.
     expect(placeOf(withTags(bencoolen, { building: "retail" }), TODAY)).not.toBeNull();
     expect(placeOf(feature("way/547383951"), TODAY)).not.toBeNull();
@@ -485,6 +542,9 @@ describe("placeOf", () => {
       { name: "Bedok Polyclinic" },
       { access: "private" },
       { access: "no" },
+      { access: "members" },
+      { access: "staff" },
+      { access: "permit" },
       { name: "Bukit Timah Park Connector" },
       { name: "Kim Seng Linear Park" },
       { construction: "yes" },

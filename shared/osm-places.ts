@@ -112,7 +112,11 @@ export const EXCLUDED: Readonly<Record<string, string>> = {
  */
 function undergroundRetail(feature: OsmFeature): boolean {
   if (tag(feature, "building") !== null) return false;
-  const below = (key: string) => /^-\d/.test(tag(feature, key) ?? "");
+  // Every level below ground: "-1" or "-2;-1", not "-1;0;1".
+  const below = (key: string) => {
+    const levels = (tag(feature, key) ?? "").split(";").map((level) => level.trim()).filter(Boolean);
+    return levels.length > 0 && levels.every((level) => /^-\d/.test(level));
+  };
   return /underground/.test(tag(feature, "location") ?? "") || tag(feature, "underground") === "yes" || below("level") || below("layer");
 }
 
@@ -216,7 +220,8 @@ export function placeOf(feature: OsmFeature, today: string): Place | null {
   if (Object.entries(CAMPUS_TAGS).some(([key, values]) => values.includes(tag(feature, key) ?? "")) || CAMPUS_NAME.test(name)) return null;
   // place=* marks a neighbourhood or locality (Emerald Hill), not a venue with a carpark of its own.
   if (tag(feature, "place") !== null) return null;
-  if (["private", "no"].includes(tag(feature, "access") ?? "")) return null;
+  // A place closed to the public (access=private, members, staff...) has no visitor parking, whatever its carpark says.
+  if (!OPEN_ACCESS.has(tag(feature, "access") ?? "")) return null;
   if (CONNECTOR.test(name) || generic(name) || retired(feature, today)) return null;
   if (isMall(feature) && undergroundRetail(feature)) return null;
   if (EXCLUDED[osmId(feature)]) return null;
@@ -296,9 +301,12 @@ export interface MapContext {
 
 /** Paths, not roads: a carpark's footpath tells nothing about who may drive in. */
 const FOOT_WAYS = new Set(["footway", "path", "steps", "pedestrian", "cycleway", "bridleway", "corridor", "platform", "elevator"]);
+/** Roads that aren't there: planned, or gone. */
+const NOT_BUILT = new Set(["proposed", "planned", "razed", "abandoned", "disused"]);
 /** A way cars drive on. A road being built counts as what it will be (construction=service). */
 function carRoad(road: MapFeature): boolean {
   const highway = tag(road as OsmFeature, "highway");
+  if (NOT_BUILT.has(highway ?? "")) return false;
   const kind = highway === "construction" ? tag(road as OsmFeature, "construction") ?? "road" : highway;
   return kind !== null && !FOOT_WAYS.has(kind);
 }
@@ -314,14 +322,20 @@ function closedRoad(road: MapFeature): boolean {
 /** Finds the car roads an entrance sits on, and the car roads that lead into a carpark area. */
 function roadIndex(roads: readonly MapFeature[]) {
   const CELL = 0.0005; // about 55 m
-  const key = (lat: number, lng: number) => `${Math.floor(lat / CELL)}:${Math.floor(lng / CELL)}`;
   const grid = new Map<string, { road: MapFeature; id: string; vertices: Position[] }[]>();
   for (const road of roads) {
     if (!carRoad(road)) continue;
     const geometry = road.geometry;
     const vertices = geometry.type === "LineString" ? geometry.coordinates : geometry.type === "Polygon" ? geometry.coordinates.flat() : [];
     const item = { road, id: osmId(road as OsmFeature), vertices };
-    const cells = new Set(vertices.map(([lng, lat]) => key(lat, lng)));
+    // Every cell each stretch of road passes through, so a long stretch with no node near a carpark is found too.
+    const cells = new Set<string>();
+    vertices.forEach(([lng, lat], i) => {
+      const [nextLng, nextLat] = vertices[i + 1] ?? [lng, lat];
+      for (let y = Math.floor(Math.min(lat, nextLat) / CELL); y <= Math.floor(Math.max(lat, nextLat) / CELL); y += 1) {
+        for (let x = Math.floor(Math.min(lng, nextLng) / CELL); x <= Math.floor(Math.max(lng, nextLng) / CELL); x += 1) cells.add(`${y}:${x}`);
+      }
+    });
     for (const cell of cells) grid.set(cell, [...(grid.get(cell) ?? []), item]);
   }
   const near = (b: Bounds) => {
@@ -335,20 +349,52 @@ function roadIndex(roads: readonly MapFeature[]) {
   };
   const point = (position: Position): Point => ({ lat: position[1], lng: position[0] });
   return {
-    /** Car roads with a node at this point: the ways a mapped entrance is on. */
-    at: (spot: Point) =>
-      near(boundsOf({ type: "Point", coordinates: [spot.lng, spot.lat] })).filter((item) => item.vertices.some((vertex) => distanceM(point(vertex), spot) <= 1)).map((item) => item.road),
     /**
-     * Car roads that cross into a carpark area (a node on or inside it next to a node outside it), each with
-     * where it comes in. Aisles inside the carpark don't count.
+     * Car roads with a node at this point: the ways a mapped entrance is on. Parking aisles don't count: many are
+     * tagged access=private only to keep routers out (Peninsula Plaza's ramp), which says nothing about who parks.
+     */
+    at: (spot: Point) =>
+      near(boundsOf({ type: "Point", coordinates: [spot.lng, spot.lat] }))
+        .filter((item) => tag(item.road as OsmFeature, "service") !== "parking_aisle" && item.vertices.some((vertex) => distanceM(point(vertex), spot) <= 1))
+        .map((item) => item.road),
+    /**
+     * Car roads that cross into a carpark area, each with where it comes in: a node on or inside the area next to
+     * a node outside it, or a stretch between two nodes outside it that crosses its outline. Aisles inside the
+     * carpark don't count.
      */
     into: (area: OsmFeature) =>
       near(boundsOf(area.geometry)).flatMap((item) => {
         const inside = item.vertices.map((vertex) => distanceToGeometry(point(vertex), area.geometry) <= 2);
         const at = inside.findIndex((here, i) => here && (inside[i - 1] === false || inside[i + 1] === false));
-        return at >= 0 ? [{ road: item.road, wayIn: point(item.vertices[at]) }] : [];
+        if (at >= 0) {
+          // Where the stretch from the node outside meets the outline, or the node itself when it's on it.
+          const outside = item.vertices[inside[at - 1] === false ? at - 1 : at + 1];
+          return [{ road: item.road, wayIn: crossingPoint(outside, item.vertices[at], area.geometry) ?? point(item.vertices[at]) }];
+        }
+        for (let i = 0; i + 1 < item.vertices.length; i += 1) {
+          const crossing = inside[i] || inside[i + 1] ? null : crossingPoint(item.vertices[i], item.vertices[i + 1], area.geometry);
+          if (crossing) return [{ road: item.road, wayIn: crossing }];
+        }
+        return [];
       })
   };
+}
+
+/** Where a stretch of road from `a` to `b` first crosses an area's outline, or null when it doesn't. */
+function crossingPoint(a: Position, b: Position, geometry: OsmFeature["geometry"]): Point | null {
+  let best: { t: number; point: Point } | null = null;
+  for (const ring of polygons(geometry).flat()) {
+    for (let i = 0; i + 1 < ring.length; i += 1) {
+      const [c, d] = [ring[i], ring[i + 1]];
+      const denominator = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
+      if (denominator === 0) continue;
+      const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / denominator;
+      const u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / denominator;
+      if (t < 0 || t > 1 || u < 0 || u > 1 || (best && best.t <= t)) continue;
+      best = { t, point: { lat: a[1] + t * (b[1] - a[1]), lng: a[0] + t * (b[0] - a[0]) } };
+    }
+  }
+  return best?.point ?? null;
 }
 
 /**
@@ -365,8 +411,8 @@ function constructionIndex(areas: readonly OsmFeature[]) {
 
 /**
  * Finds the named building a park's carpark is under or part of: the building holds a point well inside the
- * carpark, the carpark holds one well inside the building, or a corner of the carpark is inside the building.
- * Carpark buildings, the place itself and buildings with the place's name don't count.
+ * carpark, or the carpark holds one well inside the building. Carpark buildings, the place itself and buildings
+ * with the place's name don't count.
  */
 function ownerIndex(buildings: readonly OsmFeature[]) {
   const named = buildings
@@ -376,19 +422,12 @@ function ownerIndex(buildings: readonly OsmFeature[]) {
   return (carpark: OsmFeature, place: Place): string | null => {
     const box = boundsOf(carpark.geometry);
     const spot = interiorPoint(carpark.geometry);
-    const corners = polygons(carpark.geometry).flatMap(([outer]) => outer ?? []);
     for (const building of named) {
       const b = building.bounds;
       if (b.maxLat < box.minLat || b.minLat > box.maxLat || b.maxLng < box.minLng || b.minLng > box.maxLng) continue;
       if (building.id === place.id || words(building.name) === words(place.name)) continue;
       const inside = (point: Point, geometry: OsmFeature["geometry"]) => distanceToGeometry(point, geometry) === 0;
-      if (
-        inside(spot, building.feature.geometry) ||
-        inside(interiorPoint(building.feature.geometry), carpark.geometry) ||
-        corners.some(([lng, lat]) => inside({ lat, lng }, building.feature.geometry))
-      ) {
-        return building.name;
-      }
+      if (inside(spot, building.feature.geometry) || inside(interiorPoint(building.feature.geometry), carpark.geometry)) return building.name;
     }
     return null;
   };
@@ -483,8 +522,8 @@ export function selectPlaceCarparks(
   /** Closed in a way only the map around it shows: by its roads, a construction site, or EXCLUDED. */
   const closedHere = (parking: { id: string; feature: OsmFeature; point: Point; entrance: boolean }) => {
     if (EXCLUDED[parking.id] || inConstruction(parking.point)) return true;
-    if (parking.entrance) return roads.at(parking.point).some(closedRoad);
-    if (parking.feature.geometry.type === "Point") return false;
+    // An entrance, or a carpark mapped as a point, on a closed road is that road's.
+    if (parking.entrance || parking.feature.geometry.type === "Point") return roads.at(parking.point).some(closedRoad);
     const into = roads.into(parking.feature);
     return into.length > 0 && into.every(({ road }) => closedRoad(road));
   };
@@ -707,7 +746,8 @@ function carparkLabel(entry: OsmPlaceCarpark, usable: Map<string, Parking>): str
     const shared = entry.placeName.split(/\s+/);
     let i = 0;
     while (i < own.length - 1 && i < shared.length && own[i].toLowerCase() === shared[i].toLowerCase()) i += 1;
-    return own.slice(i).join(" ");
+    // One spelling on every card: "Car Park 1" reads "Carpark 1", as in "Carpark mapped at".
+    return own.slice(i).join(" ").replace(/\bcar\s+park\b/gi, "Carpark");
   }
   return null;
 }
