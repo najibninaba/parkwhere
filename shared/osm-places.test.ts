@@ -582,6 +582,14 @@ describe("big-box stores and retail areas (real features, checked 19 Oct 2026)",
     expect(run({ ...bare, places: [area], parking: [lot(103.9303, 103.9308), entrance] }).places).toEqual([
       expect.objectContaining({ placeName: "Tampines Retail Park", relation: "at", atEntrance: true, lat: 1.3704, lng: 103.93095 })
     ]);
+    // When the lot outside is a public carpark already shown, its entrance on the edge doesn't make the area's
+    // own lot a duplicate.
+    const inside = { ...lot(103.9302, 103.9304), properties: { ...lot(0, 0).properties, "@id": 1 } } as OsmFeature;
+    const outside = lot(103.9311, 103.9316);
+    const publicLot = { id: osmId(outside), kind: "carpark", name: null, operator: null, parking: "surface", access: "yes", maxHeightM: null, lat: 1.3704, lng: 103.93135, atEntrance: false } as OsmCarpark;
+    const result = run({ ...bare, shown: [publicLot], places: [area], parking: [inside, outside, entrance] });
+    expect(result.places).toEqual([expect.objectContaining({ placeName: "Tampines Retail Park", evidence: ["way/1"] })]);
+    expect(result.removed.shown).toEqual([]);
   });
 
   it("measures a store without its courtyard, and keeps a standalone store tagged with a level", () => {

@@ -622,7 +622,10 @@ export function selectPlaceCarparks(
     }
   }
   const usableList = [...usable.values()];
-  const shownList = all.filter((parking) => shownParking.has(parking.id));
+  // Entrances carry the carparks they're at, so a retail area can tell an entrance to a carpark outside it.
+  const withParents = <T extends { point: Point; entrance: boolean }>(parking: T) => ({ ...parking, parents: parking.entrance ? parentsOf(parking.point) : [] });
+  const shownList = all.filter((parking) => shownParking.has(parking.id)).map(withParents);
+  const allWithParents = all.map(withParents);
 
   const removed: PlaceSelection["removed"] = { hdb: [], shown: [], shared: [] };
   type Candidate = { place: Place; evidence: Evidence[] };
@@ -656,7 +659,7 @@ export function selectPlaceCarparks(
     const insideOutline = (parking: { feature: OsmFeature; point: Point }) =>
       distanceToGeometry(parking.feature.geometry.type === "Point" ? parking.point : interiorPoint(parking.feature.geometry), feature.geometry) === 0;
     /** How a parking feature relates to this place, or null when it isn't evidence for it. */
-    const evidenceOf = (parking: { feature: OsmFeature; point: Point; entrance: boolean; parents?: Parking[] }): { distanceM: number; named: boolean } | null => {
+    const evidenceOf = (parking: { feature: OsmFeature; point: Point; entrance: boolean; parents?: readonly { feature: OsmFeature; point: Point }[] }): { distanceM: number; named: boolean } | null => {
       if (!within(parking.point, bounds)) return null;
       const area = parking.feature.geometry.type !== "Point";
       if (place.tier === "open-space" && !area) return null;
@@ -699,7 +702,7 @@ export function selectPlaceCarparks(
       continue;
     }
     // Was there evidence before the HDB rule? Only for the summary.
-    const hdbOnly = all.some((parking) => evidenceOf(parking) && possibleVisitorParking(parking.feature, today) && nearHdb(parking.point));
+    const hdbOnly = allWithParents.some((parking) => evidenceOf(parking) && possibleVisitorParking(parking.feature, today) && nearHdb(parking.point));
     if (hdbOnly) removed.hdb.push(place.id);
   }
 
