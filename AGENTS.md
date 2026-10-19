@@ -1,6 +1,6 @@
 # ParkWhere: agent notes
 
-ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It covers HDB carparks, the mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap. A single Cloudflare Worker serves both the PWA and a small JSON API. One person maintains it, so keep it small, honest and low-maintenance.
+ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It covers HDB carparks, the mall and URA carparks that report counts to LTA, and public carparks and carparks at public places mapped on OpenStreetMap. A single Cloudflare Worker serves both the PWA and a small JSON API. One person maintains it, so keep it small, honest and low-maintenance.
 
 ## Commands
 
@@ -15,7 +15,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 | `pnpm media [url]` | Regenerates the README screenshots, walkthrough and diagram images in `docs/media`. Needs a running app. |
 | `pnpm registry` | Refreshes `worker/registry.json` from data.gov.sg. Review the diff, then commit. |
 | `pnpm stats [--days N \| --month YYYY-MM --write]` | Usage report from Analytics Engine. Needs `CLOUDFLARE_ACCOUNT_ID` and a read-only `CLOUDFLARE_ANALYTICS_TOKEN` in `.dev.vars`. |
-| `pnpm osm [--refresh]` | Refreshes `worker/osm-carparks.json` from OpenStreetMap (Geofabrik extract, cached in `.cache/osm/`). Needs `osmium` (`brew install osmium-tool`). Review the diff, then commit. |
+| `pnpm osm [--refresh]` | Refreshes `worker/osm-carparks.json` (public carparks and carparks at public places) from OpenStreetMap (Geofabrik extract, cached in `.cache/osm/`). Needs `osmium` (`brew install osmium-tool`). Review the diff, then commit. |
 | `wrangler d1 migrations apply parkwhere-production --local` | Run once before the first `pnpm dev` |
 
 ## Layout
@@ -25,6 +25,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
   - `lta.ts`: normalises LTA DataMall (LTA and URA car rows only) and its honest availability, with no time and no total
   - `usage.ts`: anonymous usage counts (lookups, visits, directions, search, errors) and what may be recorded
   - `osm.ts`: picks public carparks from OpenStreetMap features (build time) and turns them into carparks with no count (run time)
+  - `osm-places.ts`: picks carparks mapped at public places (malls, venues, parks) with access unknown (build time)
   - `levels.ts`: dot and count colour levels; the overview only colours current, dated HDB counts
   - `nearby.ts`: distance, radius search and the fallback when nothing is in range
   - `tariff.ts`: HDB charge rules and cost estimates
@@ -52,6 +53,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 8. Don't add accounts, payments, bookings, predictions, entrance photos or manual walking routes.
 9. LTA DataMall counts have no time and no total. Never colour them as current, never write "now" about them, and never price them. HDB rows from LTA are dropped in favour of data.gov.sg's.
 10. OpenStreetMap carparks have no count and no price. Keep one only when it's explicitly tagged `access=yes`, `customers` or `permissive`: a missing tag never means public. Heavy-vehicle, loading, drop-off, season-only and HDB-run parking is left out. One within 80 m of an HDB, LTA or URA carpark, with the same name as an LTA or URA carpark within 300 m, or unnamed within 250 m of one, is the same carpark and is left out. A mapped entrance is still unverified, so the card says so.
+    - The one exception is a carpark mapped at a public place (`shared/osm-places.ts`): a named mall, venue, attraction, terminal, park or sports ground with a carpark area or entrance mapped at it, and no access tag. Its access is `unknown`. It is always shown as "Carpark mapped at <place>" with "Visitor access not confirmed", never as public, and never with a price. Hospitals, clinics and campuses, private places, connectors and generic names are left out. It's dropped only as a true duplicate: HDB-run, within 80 m of an HDB carpark, or with the place's name on an LTA or URA carpark within 300 m.
 11. Usage counts stay anonymous: no cookies, IDs, IP addresses, search text or exact locations, and nothing that links visits. A destination's area (0.02°) is recorded only for gap lookups from search, quick picks or the map, never for Near me or links. Referrers are cut to the site name. Count only requests that carry `c=1` from the app. Respect Global Privacy Control and Do Not Track, skip automated browsers, and keep the README's Privacy section and the footer in step with what `shared/usage.ts` records.
 
 ## External services

@@ -36,7 +36,7 @@ export function Footer({ registryFetchedAt }: { registryFetchedAt: string | null
         Prices follow <a href={TARIFF_URL} target="_blank" rel="noopener noreferrer">{TARIFF_SOURCE}</a> and {HOLIDAYS_SOURCE}. Estimates assume one continuous stay in a regular (non-season) lot; the charge at the gantry is what counts.
       </p>
       <p>
-        Public carparks without counts are from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>, available under the{" "}
+        Carparks without counts, and the places they're mapped at, are from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>, available under the{" "}
         <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">Open Database Licence</a>.
       </p>
       <p>Maps © OneMap contributors, Singapore Land Authority.</p>

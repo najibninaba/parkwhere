@@ -94,11 +94,28 @@ function Cost({ estimate, durationMinutes }: { estimate: CostEstimate; durationM
   );
 }
 
+/** What the directions point at, and what ParkWhere hasn't checked about it. */
+function directionsHint(carpark: NearbyCarpark): string {
+  const osm = carpark.osm;
+  if (osm?.place) {
+    const point = osm.atEntrance
+      ? "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked."
+      : "Goes to the middle of a carpark mapped on OpenStreetMap, which ParkWhere hasn't checked. It may not be the entrance.";
+    return `${point} Visitor access isn't confirmed, so check the signs when you get there.`;
+  }
+  return osm?.atEntrance
+    ? "Goes to an entrance mapped on OpenStreetMap, which ParkWhere hasn't verified. Look for the signs when you get there."
+    : "Goes to the carpark's mapped location, which may not be its entrance.";
+}
+
 export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, now }: Props) {
   const [open, setOpen] = useState(false);
   const source = carpark.source ?? "hdb";
+  // A carpark mapped at a public place has no access tag: it's never shown as public.
+  const place = carpark.osm?.place;
   const tags = source === "osm" ? [
     "Mapped on OpenStreetMap",
+    place ? "Visitor access not confirmed" : null,
     carpark.osm?.access === "customers" ? "Customers only" : null,
     carpark.gantryHeightM ? `Height limit ${carpark.gantryHeightM} m` : null
   ].filter((tag): tag is string => Boolean(tag)) : source !== "hdb" ? [source === "ura" ? "URA carpark" : "Mall or development", "Data: LTA DataMall"] : [
@@ -141,17 +158,13 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
                 {app.label}
               </a>
             ))}
-            <p className="hint">
-              {carpark.osm?.atEntrance
-                ? "Goes to an entrance mapped on OpenStreetMap, which ParkWhere hasn't verified. Look for the signs when you get there."
-                : "Goes to the carpark's mapped location, which may not be its entrance."}
-            </p>
+            <p className="hint">{directionsHint(carpark)}</p>
           </div>
         </details>
         <details className="rate">
           <summary className="button">Rates</summary>
           <div className="rate-body">
-            <p>{publishedRate(carpark)}</p>
+            <p>{place ? "Rates not provided." : publishedRate(carpark)}</p>
             {estimate.kind === "estimate" && estimate.notes.map((note) => <p key={note} className="hint">{note}</p>)}
             {estimate.kind === "estimate" &&
               estimate.lines.map((line) => (

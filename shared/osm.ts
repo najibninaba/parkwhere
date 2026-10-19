@@ -2,13 +2,14 @@
 // scripts/sync-osm.ts cuts Singapore's amenity=parking and amenity=parking_entrance features out of
 // Geofabrik's extract with osmium and passes them to selectOsmCarparks. The result is bundled as
 // worker/osm-carparks.json. These carparks have no count and no price: OpenStreetMap only says where a
-// carpark is and who may use it.
-import type { CarAvailability, OsmAccess, OsmCarpark, OsmFile, RegistryCarpark } from "./domain";
+// carpark is and who may use it. Carparks mapped at public places with no access tag are picked by
+// shared/osm-places.ts and go in the same file; osmRegistry and withoutDuplicates handle both.
+import type { CarAvailability, OsmAccess, OsmCarpark, OsmFile, OsmPlaceCarpark, RegistryCarpark } from "./domain";
 // .ts extension: scripts/sync-osm.ts runs this file directly under Node.
 import { distanceM, isInSingapore } from "./nearby.ts";
 
-type Position = [number, number];
-type Geometry =
+export type Position = [number, number];
+export type Geometry =
   | { type: "Point"; coordinates: Position }
   | { type: "Polygon"; coordinates: Position[][] }
   | { type: "MultiPolygon"; coordinates: Position[][][] };
@@ -20,7 +21,7 @@ export interface OsmFeature {
   properties: Record<string, string | number>;
 }
 
-interface Point { lat: number; lng: number }
+export interface Point { lat: number; lng: number }
 
 /** Only explicit tags make a carpark usable by the public. A missing access tag is often a condo or office carpark. */
 const PUBLIC_ACCESS = new Set<string>(["yes", "customers", "permissive"]);
@@ -28,7 +29,7 @@ const PUBLIC_ACCESS = new Set<string>(["yes", "customers", "permissive"]);
 const ENTRANCE_ACCESS = new Set(["", "yes", "customers", "permissive", "destination"]);
 /** Kerbside and lane parking is URA's or HDB's street parking, not a carpark. */
 const PARKING_KINDS = new Set(["multi-storey", "underground", "surface", "rooftop"]);
-const EXCLUDED_PARKING = new Set(["street_side", "lane", "on_kerb", "half_on_kerb", "layby", "carports", "garage_boxes", "sheds"]);
+export const EXCLUDED_PARKING = new Set(["street_side", "lane", "on_kerb", "half_on_kerb", "layby", "carports", "garage_boxes", "sheds"]);
 const HDB_RUN = /\bHDB\b|housing\s*(&|and)?\s*development\s*board/i;
 /** Parking that isn't for a car visit: heavy vehicles, loading, drop-off, season holders, coaches, two-wheelers. */
 const NOT_FOR_CARS = /heavy vehicle|\bhgv\b|lorr(y|ies)|loading|drop[\s-]?off|pick[\s-]?up|season|coach|\bbus(es)?\b|motorcycle|motorbike|bicycle/i;
@@ -52,9 +53,9 @@ export const SAME_NAME_M = 300;
 export const UNNAMED_NEAR_COUNTED_M = 250;
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "");
-const tag = (feature: OsmFeature, key: string) => text(feature.properties[key]) || null;
-const osmId = (feature: OsmFeature) => `${text(feature.properties["@type"])}/${text(feature.properties["@id"])}`;
-const round = (value: number) => Number(value.toFixed(6));
+export const tag = (feature: OsmFeature, key: string) => text(feature.properties[key]) || null;
+export const osmId = (feature: OsmFeature) => `${text(feature.properties["@type"])}/${text(feature.properties["@id"])}`;
+export const round = (value: number) => Number(value.toFixed(6));
 
 /** "2.1", "2.1 m", "2.10m" -> 2.1; anything else ("default", "none", feet) -> null. */
 export function parseHeight(value: string | null): number | null {
@@ -81,7 +82,7 @@ function outerRing(geometry: Geometry): Position[] | null {
 }
 
 /** Signed shoelace area in degrees², enough to compare parts and weight a centroid. */
-function ringArea(ring: Position[]): number {
+export function ringArea(ring: Position[]): number {
   let area = 0;
   for (let i = 0; i < ring.length - 1; i += 1) area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
   return area / 2;
@@ -107,7 +108,7 @@ export function centroid(geometry: Geometry): Point {
 }
 
 /** Every part of a polygon or multipolygon, each as [outer ring, ...holes]. */
-function polygons(geometry: Geometry): Position[][][] {
+export function polygons(geometry: Geometry): Position[][][] {
   if (geometry.type === "Polygon") return [geometry.coordinates];
   if (geometry.type === "MultiPolygon") return geometry.coordinates;
   return [];
@@ -152,7 +153,7 @@ const accessOf = (feature: OsmFeature): OsmAccess | null => {
   return access && PUBLIC_ACCESS.has(access) ? (access as OsmAccess) : null;
 };
 
-const carsAllowed = (feature: OsmFeature) =>
+export const carsAllowed = (feature: OsmFeature) =>
   !["motorcar", "motor_vehicle", "vehicle"].some((key) => ["no", "private"].includes(tag(feature, key) ?? ""));
 
 /** Names that mean the same carpark: "Suntec City" and "Suntec City Carpark", "IMM" and "IMM Building". */
@@ -170,15 +171,15 @@ const disabledOnly = (feature: OsmFeature) => {
 };
 
 /** Heavy-vehicle, loading, drop-off, season-only or disabled-only parking, by tag or by what its name or notes say. */
-const notForCars = (feature: OsmFeature) =>
+export const notForCars = (feature: OsmFeature) =>
   ["name", "description", "note", "parking:condition"].some((key) => NOT_FOR_CARS.test(tag(feature, key) ?? "")) ||
   (["yes", "designated"].includes(tag(feature, "hgv") ?? "") && tag(feature, "motorcar") !== "yes") ||
   disabledOnly(feature);
 
 /** Run by HDB, by operator or name: data.gov.sg already lists HDB carparks, with counts. */
-const hdbRun = (feature: OsmFeature) => [tag(feature, "operator"), tag(feature, "name")].some((value) => value !== null && HDB_RUN.test(value));
+export const hdbRun = (feature: OsmFeature) => [tag(feature, "operator"), tag(feature, "name")].some((value) => value !== null && HDB_RUN.test(value));
 
-const parkingOf = (feature: OsmFeature): OsmCarpark["parking"] => {
+export const parkingOf = (feature: OsmFeature): OsmCarpark["parking"] => {
   const parking = tag(feature, "parking");
   return parking && PARKING_KINDS.has(parking) ? (parking as OsmCarpark["parking"]) : null;
 };
@@ -279,7 +280,7 @@ function withoutRepeats(entries: OsmCarpark[]): OsmCarpark[] {
   return kept;
 }
 
-const PARKING_LABEL: Record<NonNullable<OsmCarpark["parking"]>, string> = {
+export const PARKING_LABEL: Record<NonNullable<OsmCarpark["parking"]>, string> = {
   "multi-storey": "Multi-storey carpark",
   underground: "Underground carpark",
   surface: "Surface carpark",
@@ -294,8 +295,47 @@ export function osmLabel(carpark: OsmCarpark): string {
   return carpark.kind === "entrance" ? `${kind} entrance` : kind;
 }
 
+/** What a carpark mapped at a public place is, from its point: "Underground carpark entrance", "Surface carpark". */
+export function placeCarparkType(place: Pick<OsmPlaceCarpark, "parking" | "atEntrance">): string {
+  const kind = place.parking ? PARKING_LABEL[place.parking] : "Carpark";
+  return place.atEntrance ? `${kind} entrance` : kind;
+}
+
+/** A carpark mapped at a public place, as a card title: "Carpark mapped at Jewel Changi Airport". */
+export const placeCarparkTitle = (place: Pick<OsmPlaceCarpark, "placeName" | "relation">) =>
+  `Carpark mapped ${place.relation === "at" ? "at" : "next to"} ${place.placeName}`;
+
+/** Carparks mapped at public places, in the shape the nearby search uses. Access stays "unknown". */
+function placeRegistry(file: OsmFile | null): RegistryCarpark[] {
+  return (file?.places ?? []).map((place) => ({
+    source: "osm",
+    id: `osm:place:${place.id}`,
+    address: placeCarparkTitle(place),
+    lat: place.lat,
+    lng: place.lng,
+    carparkType: placeCarparkType(place),
+    parkingSystem: "UNKNOWN",
+    shortTermParking: "UNKNOWN",
+    freeParking: "UNKNOWN",
+    nightParking: false,
+    gantryHeightM: place.maxHeightM,
+    basement: place.parking === "underground",
+    osm: {
+      url: `https://www.openstreetmap.org/${place.evidence[0]}`,
+      access: "unknown",
+      atEntrance: place.atEntrance,
+      named: true,
+      place: { name: place.placeName, kind: place.placeKind, relation: place.relation }
+    }
+  }));
+}
+
 /** OpenStreetMap carparks in the shape the nearby search uses. HDB-only attributes are "UNKNOWN". */
 export function osmRegistry(file: OsmFile | null): RegistryCarpark[] {
+  return [...publicRegistry(file), ...placeRegistry(file)];
+}
+
+function publicRegistry(file: OsmFile | null): RegistryCarpark[] {
   return (file?.carparks ?? []).map((carpark) => ({
     source: "osm",
     id: `osm:${carpark.id}`,
@@ -322,6 +362,10 @@ export const OSM_AVAILABILITY: CarAvailability = { reportedBy: null, state: "not
  * with the same name within SAME_NAME_M (LTA's point for Suntec City is 89 m from OpenStreetMap's), or an
  * unnamed one within UNNAMED_NEAR_COUNTED_M of an LTA or URA carpark. HDB
  * addresses are block numbers, so only distance applies to them. Uses a ~1 km grid to stay cheap per request.
+ *
+ * A carpark mapped at a public place is left out only when it's a true duplicate: within DUPLICATE_RADIUS_M of
+ * an HDB carpark, or an LTA or URA carpark has the place's name within SAME_NAME_M (Suntec City). A nearby
+ * LTA or URA carpark with another name is another carpark, so the place keeps its entry.
  */
 export function withoutDuplicates(osm: readonly RegistryCarpark[], others: readonly RegistryCarpark[]): RegistryCarpark[] {
   const cell = (lat: number, lng: number) => `${Math.floor(lat * 100)}:${Math.floor(lng * 100)}`;
@@ -336,6 +380,11 @@ export function withoutDuplicates(osm: readonly RegistryCarpark[], others: reado
         const nearby = grid.get(cell(carpark.lat + dLat / 100, carpark.lng + dLng / 100)) ?? [];
         const duplicate = (other: RegistryCarpark) => {
           const distance = distanceM(carpark, other);
+          const place = carpark.osm?.place;
+          if (place) {
+            if ((other.source ?? "hdb") === "hdb") return distance <= DUPLICATE_RADIUS_M;
+            return other.source !== "osm" && distance <= SAME_NAME_M && sameName(place.name, other.address);
+          }
           if (distance <= DUPLICATE_RADIUS_M) return true;
           if ((other.source ?? "hdb") === "hdb") return false;
           return carpark.osm?.named === false ? distance <= UNNAMED_NEAR_COUNTED_M : distance <= SAME_NAME_M && sameName(carpark.address, other.address);

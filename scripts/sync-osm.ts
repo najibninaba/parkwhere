@@ -1,5 +1,6 @@
-// Refreshes worker/osm-carparks.json: public carparks mapped on OpenStreetMap, cut from Geofabrik's
-// Malaysia, Singapore and Brunei extract. Needs osmium-tool (`brew install osmium-tool`).
+// Refreshes worker/osm-carparks.json: public carparks mapped on OpenStreetMap, and carparks mapped at
+// public places (malls, venues, parks) with no access tag, cut from Geofabrik's Malaysia, Singapore and
+// Brunei extract. Needs osmium-tool (`brew install osmium-tool`).
 // Run with `pnpm osm`, review the diff, then commit. The extract (about 250 MB) stays in .cache/osm/,
 // which git ignores; pass --refresh to download a new one.
 // The output is derived from OpenStreetMap and is available under the Open Database Licence 1.0.
@@ -11,7 +12,17 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { OsmFile, RegistryFile } from "../shared/domain.ts";
 import { selectOsmCarparks, type OsmFeature } from "../shared/osm.ts";
+import { selectPlaceCarparks } from "../shared/osm-places.ts";
 import { pathToFileURL } from "node:url";
+
+/** osmium tags-filter expressions for the place kinds shared/osm-places.ts knows. */
+const PLACE_FILTERS = [
+  "nwr/shop=mall",
+  "nwr/amenity=conference_centre,exhibition_centre",
+  "nwr/tourism=attraction,museum,zoo,theme_park,aquarium,gallery",
+  "nwr/aeroway=terminal",
+  "nwr/leisure=park,garden,nature_reserve,sports_centre,stadium,water_park"
+];
 
 const EXTRACT_URL = "https://download.geofabrik.de/asia/malaysia-singapore-brunei-latest.osm.pbf";
 /** Singapore's national boundary (admin_level 2). */
@@ -86,18 +97,31 @@ async function main() {
   osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=point,polygon", "--overwrite", "-o", file("parking.geojsonseq"), file("parking.osm.pbf"));
   const features = readGeojsonSeq(await readFile(file("parking.geojsonseq"), "utf8"));
 
+  // Named areas that can be a public place with a carpark (shared/osm-places.ts picks from these).
+  osmium("tags-filter", "--overwrite", "-o", file("places.osm.pbf"), file("singapore.osm.pbf"), ...PLACE_FILTERS);
+  osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=polygon", "--overwrite", "-o", file("places.geojsonseq"), file("places.osm.pbf"));
+  const placeFeatures = readGeojsonSeq(await readFile(file("places.geojsonseq"), "utf8"));
+
   const registry = JSON.parse(await readFile(REGISTRY, "utf8")) as RegistryFile;
   const carparks = selectOsmCarparks(features, registry.carparks);
   const dataAt = osmium("fileinfo", "-g", "header.option.osmosis_replication_timestamp", source).trim() || null;
+  // The extract's own date, so an unchanged refresh leaves the file unchanged.
+  const today = (dataAt ?? new Date().toISOString()).slice(0, 10);
+  const { places, removed } = selectPlaceCarparks(placeFeatures, features, registry.carparks, carparks, today);
   const out: OsmFile = {
     source: { name: "OpenStreetMap", licence: "ODbL-1.0", extract: EXTRACT_URL, dataAt },
-    carparks
+    carparks,
+    places
   };
   await writeFile(OUT, `${JSON.stringify(out, null, 0)}\n`);
 
-  const kinds = carparks.reduce<Record<string, number>>((counts, carpark) => ({ ...counts, [`${carpark.kind} ${carpark.access}`]: (counts[`${carpark.kind} ${carpark.access}`] ?? 0) + 1 }), {});
-  console.log(`Read ${features.length} parking features (data as of ${dataAt ?? "unknown"}).`);
-  console.log(`Wrote ${carparks.length} public carparks and entrances to worker/osm-carparks.json:`, kinds);
+  const tally = <T,>(items: T[], key: (item: T) => string) => items.reduce<Record<string, number>>((counts, item) => ({ ...counts, [key(item)]: (counts[key(item)] ?? 0) + 1 }), {});
+  console.log(`Read ${features.length} parking features and ${placeFeatures.length} place areas (data as of ${dataAt ?? "unknown"}).`);
+  console.log(`Wrote ${carparks.length} public carparks and entrances to worker/osm-carparks.json:`, tally(carparks, (carpark) => `${carpark.kind} ${carpark.access}`));
+  console.log(`Wrote ${places.length} carparks mapped at public places:`, tally(places, (place) => `${place.placeKind} ${place.relation}`));
+  console.log(
+    `Left out places whose carparks are HDB's or beside an HDB carpark: ${removed.hdb.length}; already shown as public: ${removed.shown.length}; sharing another place's carpark: ${removed.shared.length}.`
+  );
 }
 
 // pathToFileURL, so a checkout path with spaces or other escaped characters still matches.

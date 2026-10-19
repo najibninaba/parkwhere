@@ -293,7 +293,7 @@ export default function App() {
               {data && (
                 <div className="list-wrap">
                   {rows.length === 0 ? (
-                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap.</p>
+                    <p className="banner">No carparks with short-term parking within 2 km. ParkWhere covers HDB carparks, mall and URA carparks that report counts to LTA, and carparks mapped on OpenStreetMap.</p>
                   ) : (
                     <>
                       {padded && (
