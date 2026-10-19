@@ -2,7 +2,8 @@
 
 /**
  * Who runs a carpark and where its data comes from. HDB carparks come from data.gov.sg; LTA and URA ones
- * from LTA DataMall; "osm" ones are public carparks mapped on OpenStreetMap, with no count and no price.
+ * from LTA DataMall; "osm" ones are mapped on OpenStreetMap (public carparks, and carparks at public places
+ * with access unknown), with no count and no price.
  */
 export type CarparkSource = "hdb" | "lta" | "ura" | "osm";
 
@@ -154,11 +155,14 @@ export type OsmAccess = "yes" | "customers" | "permissive";
 export interface OsmDetails {
   /** The mapped object, e.g. https://www.openstreetmap.org/way/177625322 */
   url: string;
-  access: OsmAccess;
+  /** "unknown" only for a carpark mapped at a public place, which is never shown as public. */
+  access: OsmAccess | "unknown";
   /** True when the point is a mapped carpark entrance; otherwise it's the middle of the mapped carpark. */
   atEntrance: boolean;
   /** False when OpenStreetMap gives no name, so the card shows what it is ("Underground carpark entrance"). */
   named: boolean;
+  /** Set only for a carpark mapped at a public place: the place, and whether the carpark is inside its outline. */
+  place?: { name: string; kind: OsmPlaceKind; relation: OsmPlaceRelation };
 }
 
 /** A public carpark or carpark entrance mapped on OpenStreetMap, as written by scripts/sync-osm.ts. */
@@ -177,6 +181,39 @@ export interface OsmCarpark {
   atEntrance: boolean;
 }
 
+export type OsmPlaceKind = "mall" | "venue" | "attraction" | "terminal" | "park" | "sports";
+/** "at": the carpark is mapped inside the place's outline. "next-to": outside it, within 30 m or named after the place. */
+export type OsmPlaceRelation = "at" | "next-to";
+
+/**
+ * A carpark mapped at a public place (a mall, venue, attraction, terminal, park or sports ground) that has no
+ * access tag, as written by scripts/sync-osm.ts. It says only that a carpark is mapped there: visitor access
+ * is unknown and always shown as unconfirmed, never as public. One per place, and one mapped carpark never
+ * makes more than one entry.
+ */
+export interface OsmPlaceCarpark {
+  /** The place's OpenStreetMap object, e.g. "way/123". */
+  id: string;
+  kind: "place";
+  placeName: string;
+  placeKind: OsmPlaceKind;
+  relation: OsmPlaceRelation;
+  /**
+   * The carpark's own mapped name, when the title needs it: the building it's under in a park ("SAFRA Choa
+   * Chu Kang"), or to tell apart places with the same name ("Carpark 1", "Carpark 6" at Changi Beach Park).
+   */
+  carparkName?: string;
+  /** OpenStreetMap ids of the parking features that show the carpark; the first is where the point is. */
+  evidence: string[];
+  /** True when the point is a mapped carpark entrance; otherwise it's a spot on a mapped carpark (where a road comes in, or well inside it). */
+  atEntrance: boolean;
+  parking: OsmCarpark["parking"];
+  maxHeightM: number | null;
+  access: "unknown";
+  lat: number;
+  lng: number;
+}
+
 export interface OsmFile {
   source: {
     name: "OpenStreetMap";
@@ -187,4 +224,6 @@ export interface OsmFile {
     dataAt: string | null;
   };
   carparks: OsmCarpark[];
+  /** Carparks mapped at public places, with access unknown. */
+  places?: OsmPlaceCarpark[];
 }

@@ -246,9 +246,11 @@ describe("Worker routes", () => {
       const withLta = (await (await call("/api/overview", env({ LTA_DATAMALL_ACCOUNT_KEY: "test-key" }))).json()) as OverviewResponse;
       resetFeedMemory();
       const without = (await (await call("/api/overview", env())).json()) as OverviewResponse;
-      // Five LTA and URA dots are added. OpenStreetMap carparks that duplicate them are left out, so the
-      // total grows by at most five.
-      expect(withLta.counts.carparks).toBeGreaterThan(without.counts.carparks);
+      // Five LTA and URA dots are added. OpenStreetMap carparks that duplicate them (Suntec City, and the
+      // carparks mapped at Marina Square and Raffles City) are left out, so the total grows by at most five.
+      const ltaDots = [[1.29375, 103.85718], [1.29115, 103.85728], [1.29382, 103.85319], [1.30533, 103.82957], [1.31411, 103.85961]];
+      const has = (body: OverviewResponse, [lat, lng]: number[]) => body.points.some((point) => point[0] === lat && point[1] === lng);
+      for (const dot of ltaDots) expect([dot, has(withLta, dot), has(without, dot)]).toEqual([dot, true, false]);
       expect(withLta.counts.carparks).toBeLessThanOrEqual(without.counts.carparks + 5);
       expect(withLta.lta?.state).toBe("live");
       expect(without.lta).toBeNull();
@@ -309,6 +311,25 @@ describe("Worker routes", () => {
       expect(body.withinRadius).toBeGreaterThanOrEqual(1);
       const health = (await (await call("/health", env())).json()) as { osmCarparks: number };
       expect(health.osmCarparks).toBeGreaterThan(200);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("lists a carpark mapped at a public place with access unknown, never as public", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = scriptedFetch([ok]).fetcher as unknown as typeof fetch;
+    try {
+      // Singapore Expo, as OneMap places it. Its carpark has no access tag on OpenStreetMap.
+      const body = (await (await call("/api/nearby?lat=1.33496&lng=103.96123&radius=500", env())).json()) as NearbyResponse;
+      const expo = body.carparks.find((carpark) => carpark.id === "osm:place:way/173028306");
+      expect(expo).toMatchObject({
+        source: "osm",
+        address: "Carpark mapped at Singapore Expo",
+        carparkType: "Surface carpark",
+        osm: { url: "https://www.openstreetmap.org/way/171494334", access: "unknown", atEntrance: false, place: { name: "Singapore Expo", kind: "venue", relation: "at" } },
+        car: { reportedBy: null, state: "not-in-feed", available: null }
+      });
     } finally {
       globalThis.fetch = original;
     }

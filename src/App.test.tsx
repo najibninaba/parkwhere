@@ -312,6 +312,50 @@ describe("ParkWhere app", () => {
     expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/way/177625322");
   });
 
+  it("shows a carpark mapped at a public place as mapped, with visitor access not confirmed", async () => {
+    const place = (relation: "at" | "next-to", atEntrance: boolean, id: string, name: string, evidence: string) => ({
+      ...base,
+      source: "osm" as const,
+      id: `osm:place:${id}`,
+      address: `Carpark mapped ${relation === "at" ? "at" : "next to"} ${name}`,
+      carparkType: atEntrance ? "Underground carpark entrance" : "Surface carpark",
+      parkingSystem: "UNKNOWN",
+      shortTermParking: "UNKNOWN",
+      freeParking: "UNKNOWN",
+      nightParking: false,
+      gantryHeightM: null,
+      distanceM: 140,
+      osm: { url: `https://www.openstreetmap.org/${evidence}`, access: "unknown" as const, atEntrance, named: true, place: { name, kind: "mall" as const, relation } },
+      car: { reportedBy: null, state: "not-in-feed" as const, available: null, total: null, recordedAt: null, freshness: "unknown" as const }
+    });
+    nearbyResponse = () =>
+      Response.json(nearby({ carparks: [
+            place("at", true, "way/547383951", "Jewel Changi Airport", "node/13856188306"),
+            place("next-to", false, "way/432515092", "Funan", "way/1")
+          ] }));
+    const user = await searchAndChoose();
+    const card = (await screen.findByText("Carpark mapped at Jewel Changi Airport")).closest("li")!;
+    expect(within(card).getByText("140 m away · Underground carpark entrance")).toBeInTheDocument();
+    expect(within(card).getByText("No live count for this carpark")).toBeInTheDocument();
+    expect(within(card).getByText("No estimate")).toBeInTheDocument();
+    expect(within(card).getByText("Mapped on OpenStreetMap")).toBeInTheDocument();
+    expect(within(card).getByText("Visitor access not confirmed")).toBeInTheDocument();
+    expect(within(card).queryByText(/public/i)).not.toBeInTheDocument();
+    await user.click(within(card).getByText("Directions"));
+    expect(
+      within(card).getByText(
+        "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked. Visitor access isn't confirmed, so check the signs when you get there."
+      )
+    ).toBeInTheDocument();
+    await user.click(within(card).getByText("Rates"));
+    expect(within(card).getByText("Rates not provided.")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/node/13856188306");
+
+    const next = screen.getByText("Carpark mapped next to Funan").closest("li")!;
+    await user.click(within(next).getByText("Directions"));
+    expect(within(next).getByText(/Goes to a spot on a carpark mapped on OpenStreetMap, which ParkWhere hasn.t checked\. It may not be the entrance\./)).toBeInTheDocument();
+  });
+
   it("says when LTA is down even if no mall carparks are listed", async () => {
     nearbyResponse = () => Response.json(nearby({ lta: { state: "unavailable", fetchedAt: null, feedTimestamp: null, refreshError: "LTA DataMall returned HTTP 503", lastAttemptAt: nowIso() } }));
     await searchAndChoose();

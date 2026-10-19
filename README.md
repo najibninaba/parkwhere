@@ -35,7 +35,7 @@
 
 ## What it does
 
-- **Shows carparks on a map.** Every HDB carpark, the mall and URA carparks that report counts to LTA, and public carparks mapped on OpenStreetMap, such as the zoo's. Dots are coloured by how many car lots are available. OpenStreetMap carparks have no count, so their dots are grey.
+- **Shows carparks on a map.** Every HDB carpark, the mall and URA carparks that report counts to LTA, and carparks mapped on OpenStreetMap: public ones such as the zoo's, and ones at malls, venues and parks. Dots are coloured by how many car lots are available. OpenStreetMap carparks have no count, so their dots are grey.
 - **Says how recent each count is.** HDB counts show when the carpark last reported. LTA counts have no time, so they're shown as reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
 - **Estimates parking costs at HDB carparks.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate. Mall, URA and OpenStreetMap carparks say "No estimate".
 - **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location, or at its entrance when OpenStreetMap maps one.
@@ -77,6 +77,11 @@ One Cloudflare Worker serves the web app and a small JSON API:
   - Street parking, HDB-run carparks, and parking for heavy vehicles, loading, drop-off or season holders are left out.
   - So that no carpark is listed twice, one is also left out when it's within 80 m of an HDB, LTA or URA carpark, has the same name as an LTA or URA carpark within 300 m, or is unnamed and within 250 m of one. A carpark that OpenStreetMap maps more than once (as a point, an area and entrances) is listed once.
   - They have no count and no price. Directions go to a mapped entrance when there is one.
+- **Carparks at public places** also come from OpenStreetMap, in the same file. Many malls, venues and parks, such as Jewel and Singapore Expo, have their carpark mapped with no access tag. ParkWhere lists one carpark for such a place, as "Carpark mapped at Singapore Expo", with "Visitor access not confirmed". It never says the carpark is public.
+  - Places are named areas: malls, conference and exhibition centres, attractions, museums, galleries, zoos, theme parks, aquariums and airport terminals, where a carpark area or entrance is mapped inside the outline or within 30 m of it, a carpark mapped as a point is inside the outline, or a carpark named after the place is within 300 m. Parks, gardens, nature reserves, sports centres, stadiums and water parks count only a carpark area inside the outline.
+  - Hospitals, clinics, schools and universities, blocks of flats with shops below, shops in MRT stations and underground links, neighbourhoods, private places, park connectors and generic names such as "Playground" are left out, as are places under construction or closed and anything inside a construction site. A short list in `shared/osm-places.ts` leaves out what the map can't show, such as Kranji Racecourse, which closed in 2024.
+  - The same filters as public carparks apply to the mapped carpark, and also to anything for buses or goods vehicles, anything described as for residents or staff, exits and service entrances. An entrance on a road tagged private, for residents or staff, or still being built is left out (a parking aisle's tag doesn't count, since many are tagged private only to keep routers out), and so is a carpark that only such roads lead into. An entrance just outside a place that is closer to another building is taken to be that building's.
+  - One carpark makes one entry: when places share it, the more specific one keeps it, but a part of a venue such as "Jewel Changi Basement" is named after the venue. When two places have the same name, each card adds its carpark's mapped name ("Changi Beach Park (Carpark 1)"), and a park's carpark under a named building says whose it is ("Choa Chu Kang Park (SAFRA Choa Chu Kang)"). Directions go to a mapped entrance, else to where a road comes into the carpark, else to a point well inside it. An entry is dropped only when it's HDB-run, within 80 m of an HDB carpark, already shown as a public carpark, within 30 m of an LTA or URA carpark, or an LTA or URA carpark with the place's name is within 300 m.
   - Refresh with `pnpm osm`, which needs [osmium-tool](https://osmcode.org/osmium-tool/) and caches Geofabrik's 250 MB Malaysia, Singapore and Brunei extract in `.cache/osm/`.
 - **Place search and map tiles** come from [OneMap](https://www.onemap.gov.sg/) (Singapore Land Authority). Search needs `ONEMAP_EMAIL` and `ONEMAP_PASSWORD`, and the token is cached in D1.
 - **Prices** follow HDB's [short-term parking charges](https://www.hdb.gov.sg/parking/other-parking-matters/shortterm-parking/shortterm-parking-charges) and MOM's public holidays for 2026 and 2027 (`shared/tariff.ts`, `shared/holidays.ts`).
@@ -149,7 +154,7 @@ ParkWhere is free, so it counts a few things to judge whether it's useful: page 
 
 - Prices for mall and URA carparks. LTA's only rates dataset is free text from 2018, and URA's rates API needs a separate URA key.
 - Price estimates for coupon carparks, stays during peak-hour windows, and Central Area rates on weekday public holidays.
-- Carparks that report to neither HDB nor LTA, unless OpenStreetMap tags them as public. Jewel and Singapore Expo, for example, are mapped with no access tag, so they're left out.
+- Carparks that report to neither HDB nor LTA, unless OpenStreetMap tags them as public or maps them at a public place. Who may park at a place's carpark isn't checked: the card says visitor access isn't confirmed. Places mapped only as a point or as land use (such as Paya Lebar Quarter), parks whose carpark is mapped only as a point, and hospitals are left out.
 - Walking distances and verified entrances. Distances are in a straight line. Directions go to the carpark's mapped point, or to an entrance mapped on OpenStreetMap, and ParkWhere hasn't checked either.
 - Public holidays after 2027. Add them to `shared/holidays.ts` when MOM publishes them.
 - Dark mode.
@@ -164,7 +169,7 @@ The code is under the [MIT License](LICENSE).
 
 ParkWhere contains information from Carpark Availability and HDB Carpark Information, accessed from data.gov.sg, and from Car Park Availability, accessed from LTA DataMall. All of it is made available under the terms of the [Singapore Open Data Licence version 1.0](https://data.gov.sg/open-data-licence). The fixtures in `fixtures/` are trimmed copies of that data, used for tests.
 
-Public carpark locations are © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). `worker/osm-carparks.json` and `fixtures/osm-parking.sample.json` are derived from OpenStreetMap and are available under the [Open Database Licence 1.0](https://opendatacommons.org/licenses/odbl/1-0/), not the MIT License.
+Carpark and place locations from OpenStreetMap are © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). `worker/osm-carparks.json`, `fixtures/osm-parking.sample.json` and `fixtures/osm-places.sample.json` are derived from OpenStreetMap and are available under the [Open Database Licence 1.0](https://opendatacommons.org/licenses/odbl/1-0/), not the MIT License.
 
 LTA's API terms allow commercial use with attribution and require keys to be kept on the server. ParkWhere keeps its key on the server and keeps only the last minute's copy of the data.
 
