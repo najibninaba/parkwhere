@@ -1,11 +1,11 @@
 // Carparks mapped at public places on OpenStreetMap (© OpenStreetMap contributors, Open Database Licence 1.0).
-// Many malls, venues and parks have their carpark mapped with no access tag, so shared/osm.ts leaves them
-// out. scripts/sync-osm.ts also cuts Singapore's named place areas out of the extract and passes them here
-// with the parking features. A place gets one entry when a carpark is mapped at it. The entry says only that:
-// visitor access is unknown and is always shown as unconfirmed, never as public. Pure, so it's tested.
+// Many malls, venues, big-box stores and parks have their carpark mapped with no access tag, so shared/osm.ts
+// leaves them out. scripts/sync-osm.ts also cuts Singapore's named place areas out of the extract and passes
+// them here with the parking features. A place gets one entry when a carpark is mapped at it. The entry says
+// only that: access is unknown, and it's never shown as public. Pure, so it's tested.
 import type { OsmCarpark, OsmPlaceCarpark, OsmPlaceKind, OsmPlaceRelation } from "./domain";
 // .ts extensions: scripts/sync-osm.ts runs this file directly under Node.
-import { distanceM, isInSingapore } from "./nearby.ts";
+import { FALLBACK_LIMIT_M, distanceM, isInSingapore } from "./nearby.ts";
 import {
   DUPLICATE_RADIUS_M,
   ENTRANCE_RADIUS_M,
@@ -38,21 +38,41 @@ import {
 export const NEXT_TO_M = 30;
 /** A carpark named after a venue counts up to this far from its outline (Singapore Expo's lots). */
 export const NAMED_AFTER_M = 300;
+/** Two cards further apart than this never appear in one list (each is at most FALLBACK_LIMIT_M from the search). */
+export const TITLE_APART_M = 2 * FALLBACK_LIMIT_M;
 
 /**
- * Venues (tier A): any mapped carpark area or carpark entrance at the outline counts. Open spaces (tier B):
- * only a carpark area inside the outline counts, because a park's edge often runs along condos and offices.
- * A place tagged as both is treated as an open space, the stricter tier.
+ * Venues (tier A): any mapped carpark area or carpark entrance at the outline counts. Big-box stores are venues
+ * too. Retail areas (landuse=retail, such as Tampines Retail Park): any carpark mapped inside the outline, but
+ * nothing outside it, because an area's edge often runs along roads and other people's land. Open spaces
+ * (tier B): only a carpark area inside the outline counts, because a park's edge often runs along condos and
+ * offices. A place tagged as more than one is treated as the first that matches below.
  */
-type Tier = "venue" | "open-space";
+type Tier = "venue" | "retail-area" | "open-space";
+/**
+ * Shops big enough to have a carpark of their own (IKEA, Courts, Giant), when mapped as a building or area of at
+ * least BIG_BOX_MIN_M2. Car dealers (shop=car) are left out: their parking is the showroom's.
+ */
+export const BIG_BOX_SHOPS = ["furniture", "electronics", "department_store", "supermarket", "doityourself", "hardware", "garden_centre", "wholesale"];
+export const BIG_BOX_MIN_M2 = 3_000;
 const PLACE_TAGS: { key: string; values: string[]; kind: OsmPlaceKind; tier: Tier }[] = [
   { key: "leisure", values: ["sports_centre", "stadium"], kind: "sports", tier: "open-space" },
   { key: "leisure", values: ["park", "garden", "nature_reserve", "water_park"], kind: "park", tier: "open-space" },
   { key: "aeroway", values: ["terminal"], kind: "terminal", tier: "venue" },
   { key: "shop", values: ["mall"], kind: "mall", tier: "venue" },
   { key: "amenity", values: ["conference_centre", "exhibition_centre"], kind: "venue", tier: "venue" },
-  { key: "tourism", values: ["attraction", "museum", "zoo", "theme_park", "aquarium", "gallery"], kind: "attraction", tier: "venue" }
+  { key: "tourism", values: ["attraction", "museum", "zoo", "theme_park", "aquarium", "gallery"], kind: "attraction", tier: "venue" },
+  { key: "shop", values: BIG_BOX_SHOPS, kind: "store", tier: "venue" },
+  { key: "landuse", values: ["retail"], kind: "retail", tier: "retail-area" }
 ];
+/**
+ * Markets, food centres and petrol stations: their lots are for stallholders' lorries, a short stop or the
+ * pumps, and a food centre's carpark is usually HDB's. Left out as stores and as retail areas.
+ */
+const NOT_A_SHOPPING_PLACE: Record<string, string[]> = { amenity: ["marketplace", "food_court", "fuel"] };
+const FOOD_OR_MARKET_NAME = /\b(food|hawker|pasar|market)\b/i;
+/** A retail area that holds homes too ("Bedok Mall/Bedok Residences"): its carparks may be the residents'. */
+const RESIDENTIAL_NAME = /\bresidences?\b|\bcondo(minium)?s?\b|\bflats?\b|\bapartments?\b/i;
 
 /**
  * Staff and visitor parking can't be told apart at hospitals, clinics and campuses, and residents' and visitors'
@@ -103,7 +123,10 @@ export const EXCLUDED: Readonly<Record<string, string>> = {
   "relation/2746776": "Kranji Racecourse: closed since October 2024",
   // Checked 19 Oct 2026 against Street View (Jan 2023): lorries queue into this opening under Novena Square
   // Office Tower A and there's no carpark sign, so it's probably the loading entrance, not Velocity's carpark.
-  "node/11823943799": "Velocity @ Novena Square: probably a loading entrance"
+  "node/11823943799": "Velocity @ Novena Square: probably a loading entrance",
+  // Checked 19 Oct 2026 against Street View (Sep 2022): "Bedok Corner" is Bedok Corner Food Centre, a hawker
+  // centre tagged only landuse=retail, and its lot is a public coupon carpark, not a shop's.
+  "way/1149136196": "Bedok Corner: a food centre with a coupon carpark"
 };
 
 /**
@@ -198,6 +221,16 @@ export function namedAfter(carparkName: string | null, placeName: string): boole
   return carparkName !== null && place.trim().length >= 3 && words(carparkName).includes(place);
 }
 
+/** An area in square metres, near enough at Singapore's latitude. */
+export function areaM2(geometry: Geometry): number {
+  // Holes (a courtyard) aren't floor space.
+  const degrees = polygons(geometry).reduce(
+    (sum, [outer, ...holes]) => sum + Math.abs(ringArea(outer ?? [])) - holes.reduce((inner, hole) => inner + Math.abs(ringArea(hole)), 0),
+    0
+  );
+  return degrees * 110_574 * 111_320 * Math.cos((centroid(geometry).lat * Math.PI) / 180);
+}
+
 export interface Place {
   feature: OsmFeature;
   id: string;
@@ -224,6 +257,12 @@ export function placeOf(feature: OsmFeature, today: string): Place | null {
   if (!OPEN_ACCESS.has(tag(feature, "access") ?? "")) return null;
   if (CONNECTOR.test(name) || generic(name) || retired(feature, today)) return null;
   if (isMall(feature) && undergroundRetail(feature)) return null;
+  const shopping = match.kind === "store" || match.kind === "retail";
+  if (shopping && (Object.entries(NOT_A_SHOPPING_PLACE).some(([key, values]) => values.includes(tag(feature, key) ?? "")) || FOOD_OR_MARKET_NAME.test(name))) return null;
+  // A store is a building or an area of its own, big enough for its own carpark. A shop mapped as a room inside
+  // a mall (indoor=room) is the mall's, and the mall's card covers it.
+  if (match.kind === "store" && (tag(feature, "indoor") !== null || areaM2(feature.geometry) < BIG_BOX_MIN_M2)) return null;
+  if (match.kind === "retail" && RESIDENTIAL_NAME.test(name)) return null;
   if (EXCLUDED[osmId(feature)]) return null;
   const area = polygons(feature.geometry).reduce((sum, [outer]) => sum + Math.abs(ringArea(outer ?? [])), 0);
   return { feature, id: osmId(feature), name, kind: match.kind, tier: match.tier, area };
@@ -443,6 +482,8 @@ interface Parking {
   group: string;
   /** For an area, its usable entrances (within ENTRANCE_RADIUS_M), lowest id first. */
   entrances: Parking[];
+  /** For an entrance, the carpark areas or points it's at. */
+  parents: Parking[];
   /**
    * Where directions go when this is the point: for an area, where an open road comes into it (the one nearest
    * its middle), else a point well inside it; for an entrance or a carpark mapped as a point, the point.
@@ -468,9 +509,11 @@ export interface PlaceSelection {
 /**
  * One entry per public place with a carpark mapped at it.
  *
- * - Venues (malls, conference and exhibition centres, attractions, museums, zoos, terminals): a carpark area
- *   or entrance inside the outline or within NEXT_TO_M of it, or a carpark area named after the place within
- *   NAMED_AFTER_M. The point is a usable entrance when there is one.
+ * - Venues (malls, conference and exhibition centres, attractions, museums, zoos, terminals, big-box stores): a
+ *   carpark area or entrance inside the outline or within NEXT_TO_M of it, or a carpark area named after the
+ *   place within NAMED_AFTER_M. The point is a usable entrance when there is one. A store wholly inside an open
+ *   mall, venue, attraction or terminal is left to it.
+ * - Retail areas (landuse=retail): any carpark inside the outline, but no entrance to a carpark outside it.
  * - Open spaces (parks, gardens, nature reserves, sports centres, stadiums, water parks): only a carpark area
  *   inside the outline. The point is one of its entrances, else where an open road comes into it, else a
  *   point well inside it (never the centroid, which can land on grass or in a building).
@@ -481,10 +524,11 @@ export interface PlaceSelection {
  * - Evidence just outside a venue's outline doesn't count when it's closer to another building (`context.buildings`).
  * - A feature that is HDB-run or within DUPLICATE_RADIUS_M of an HDB carpark is dropped; data.gov.sg lists it.
  * - A place that already has a public carpark from `shown` (osm-carparks.json) gets no entry.
- * - One carpark makes at most one entry. Places that share one are resolved in favour of venues, then
- *   carparks inside the outline, then the smaller place. A place named as part of another ("Jewel Changi
+ * - One carpark makes at most one entry. Places that share one are resolved in favour of venues and stores,
+ *   then carparks inside the outline, then the smaller place. A place named as part of another ("Jewel Changi
  *   Basement") takes the other's name, and a sports hall inside a complex of the same name is the complex.
- * - No two entries have the same title: places with the same name are told apart by their carparks' names.
+ * - No two entries within TITLE_APART_M have the same title: places with the same name are told apart by their
+ *   carparks' names.
  */
 export function selectPlaceCarparks(
   placeFeatures: readonly OsmFeature[],
@@ -557,7 +601,7 @@ export function selectPlaceCarparks(
   const shownParking = new Set<string>();
   for (const carpark of carparks) {
     if (isShown(carpark)) shownParking.add(carpark.id);
-    else if (fine(carpark)) usable.set(carpark.id, { ...carpark, group: carpark.id, entrances: [], spot: spotOn(carpark) });
+    else if (fine(carpark)) usable.set(carpark.id, { ...carpark, group: carpark.id, entrances: [], parents: [], spot: spotOn(carpark) });
   }
   for (const entrance of all.filter((parking) => parking.entrance)) {
     const parents = parentsOf(entrance.point);
@@ -568,7 +612,7 @@ export function selectPlaceCarparks(
     }
     if (!fine(entrance) || parents.some((parent) => !usable.has(parent.id))) continue;
     const areas = parents.map((parent) => usable.get(parent.id)!);
-    const parking: Parking = { ...entrance, group: areas[0]?.group ?? entrance.id, entrances: [], spot: entrance.point };
+    const parking: Parking = { ...entrance, group: areas[0]?.group ?? entrance.id, entrances: [], parents: areas, spot: entrance.point };
     usable.set(entrance.id, parking);
     for (const area of areas) area.entrances.push(parking);
     // An entrance shared by two mapped carparks joins them into one.
@@ -578,24 +622,57 @@ export function selectPlaceCarparks(
     }
   }
   const usableList = [...usable.values()];
-  const shownList = all.filter((parking) => shownParking.has(parking.id));
+  // Entrances carry the carparks they're at, so a retail area can tell an entrance to a carpark outside it.
+  const withParents = <T extends { point: Point; entrance: boolean }>(parking: T) => ({ ...parking, parents: parking.entrance ? parentsOf(parking.point) : [] });
+  const shownList = all.filter((parking) => shownParking.has(parking.id)).map(withParents);
+  const allWithParents = all.map(withParents);
 
   const removed: PlaceSelection["removed"] = { hdb: [], shown: [], shared: [] };
   type Candidate = { place: Place; evidence: Evidence[] };
   const candidates: Candidate[] = [];
-  for (const feature of placeFeatures) {
+  const places = placeFeatures.flatMap((feature) => {
     const place = placeOf(feature, today);
+    return place ? [place] : [];
+  });
+  // A store inside a mall, venue, attraction or terminal is part of it: that place's card covers its carpark.
+  // The store must lie wholly inside it (every corner within 5 m of the outline), and the container must be open.
+  const containers = places.filter(
+    (place) => place.tier === "venue" && place.kind !== "store" && !inConstruction(interiorPoint(place.feature.geometry), place.area)
+  );
+  const insideContainer = (store: Place) => {
+    const spot = interiorPoint(store.feature.geometry);
+    const corners = polygons(store.feature.geometry).flatMap(([outer]) => outer ?? []);
+    return containers.some(
+      (other) =>
+        other.area > store.area &&
+        distanceToGeometry(spot, other.feature.geometry) === 0 &&
+        corners.every(([lng, lat]) => distanceToGeometry({ lat, lng }, other.feature.geometry) <= 5)
+    );
+  };
+  for (const place of places) {
+    const feature = place.feature;
     // A place inside a larger construction site is closed, or not open yet (PARKTOWN, in Parktown Tampines).
-    if (!place || inConstruction(interiorPoint(feature.geometry), place.area)) continue;
+    if (inConstruction(interiorPoint(feature.geometry), place.area)) continue;
+    if (place.kind === "store" && insideContainer(place)) continue;
     const reachM = place.tier === "venue" ? NAMED_AFTER_M : 0;
     const bounds = boundsOf(feature.geometry, reachM);
+    const insideOutline = (parking: { feature: OsmFeature; point: Point }) =>
+      distanceToGeometry(parking.feature.geometry.type === "Point" ? parking.point : interiorPoint(parking.feature.geometry), feature.geometry) === 0;
     /** How a parking feature relates to this place, or null when it isn't evidence for it. */
-    const evidenceOf = (parking: { feature: OsmFeature; point: Point; entrance: boolean }): { distanceM: number; named: boolean } | null => {
+    const evidenceOf = (parking: { feature: OsmFeature; point: Point; entrance: boolean; parents?: readonly { feature: OsmFeature; point: Point }[] }): { distanceM: number; named: boolean } | null => {
       if (!within(parking.point, bounds)) return null;
       const area = parking.feature.geometry.type !== "Point";
       if (place.tier === "open-space" && !area) return null;
       const distance = distanceToGeometry(parking.point, feature.geometry);
-      if (place.tier === "open-space") return distance === 0 ? { distanceM: 0, named: false } : null;
+      if (place.tier === "retail-area") {
+        // A retail area counts any carpark inside its outline, and nothing outside it. An entrance just inside
+        // the edge to a carpark that is outside (the building across the road) is that carpark's.
+        if (distance > 0) return null;
+        const parents = parking.parents ?? [];
+        if (parking.entrance && parents.length > 0 && !parents.some((parent) => insideOutline(parent))) return null;
+        return { distanceM: 0, named: false };
+      }
+      if (place.tier !== "venue") return distance === 0 ? { distanceM: 0, named: false } : null;
       // Just outside the outline, it must not be closer to (or inside) another building: then it's that building's.
       const otherBuilding = () => nearestBuilding(parking.point, distance, feature) < distance;
       // Inside a venue, a carpark mapped as a bare point counts too (Sengkang Grand Mall's underground carpark).
@@ -625,7 +702,7 @@ export function selectPlaceCarparks(
       continue;
     }
     // Was there evidence before the HDB rule? Only for the summary.
-    const hdbOnly = all.some((parking) => evidenceOf(parking) && possibleVisitorParking(parking.feature, today) && nearHdb(parking.point));
+    const hdbOnly = allWithParents.some((parking) => evidenceOf(parking) && possibleVisitorParking(parking.feature, today) && nearHdb(parking.point));
     if (hdbOnly) removed.hdb.push(place.id);
   }
 
@@ -647,6 +724,8 @@ export function selectPlaceCarparks(
     removed.shared.push(candidate.place.id);
     return false;
   });
+  // A store inside a retail area that shares its carpark names the card: "IKEA", not "Tampines Retail Park".
+  // Between a retail area and a park, the smaller (more specific) place wins.
   const tierRank = (tier: Tier) => (tier === "venue" ? 0 : 1);
   type Ranked = { place: Place; entry: OsmPlaceCarpark };
   const rank = (a: Ranked, b: Ranked) =>
@@ -710,26 +789,22 @@ export function selectPlaceCarparks(
     for (const group of groups) used.add(group);
   }
 
-  // No two cards with one title. Places with the same name (Changi Beach Park, mapped as two areas) are told
-  // apart by their carparks' own names; one that still can't be is left out.
-  const count = (items: { entry: OsmPlaceCarpark }[]) =>
-    items.reduce((counts, { entry }) => counts.set(placeCarparkTitle(entry), (counts.get(placeCarparkTitle(entry)) ?? 0) + 1), new Map<string, number>());
-  const repeated = count(kept);
+  // No two cards that can be listed together share a title. Places with the same name (Changi Beach Park,
+  // mapped as two areas) are told apart by their carparks' own names; one that still can't be is left out.
+  // Cards far apart never meet in one list, so two stores of one brand (IKEA Tampines and IKEA Alexandra) keep
+  // the plain name.
+  const clash = (a: OsmPlaceCarpark, b: OsmPlaceCarpark) => a !== b && placeCarparkTitle(a) === placeCarparkTitle(b) && distanceM(a, b) <= TITLE_APART_M;
+  const titled = kept.map((item) => item.entry);
   for (const item of kept) {
-    if ((repeated.get(placeCarparkTitle(item.entry)) ?? 0) < 2) continue;
+    if (!titled.some((other) => clash(item.entry, other))) continue;
     const label = carparkLabel(item.entry, usable);
     if (label) item.entry = { ...item.entry, carparkName: label };
   }
-  const titles = new Set<string>();
-  const unique = kept.filter(({ entry, place }) => {
-    const title = placeCarparkTitle(entry);
-    if (titles.has(title)) {
-      removed.shared.push(place.id);
-      return false;
-    }
-    titles.add(title);
-    return true;
-  });
+  const unique: typeof kept = [];
+  for (const item of kept) {
+    if (unique.some((other) => clash(item.entry, other.entry))) removed.shared.push(item.place.id);
+    else unique.push(item);
+  }
   return { places: unique.map(({ entry }) => entry).sort(byId), removed };
 }
 
@@ -747,7 +822,10 @@ function carparkLabel(entry: OsmPlaceCarpark, usable: Map<string, Parking>): str
     let i = 0;
     while (i < own.length - 1 && i < shared.length && own[i].toLowerCase() === shared[i].toLowerCase()) i += 1;
     // One spelling on every card: "Car Park 1" reads "Carpark 1", as in "Carpark mapped at".
-    return own.slice(i).join(" ").replace(/\bcar\s+park\b/gi, "Carpark");
+    const label = own.slice(i).join(" ").replace(/\bcar\s+park\b/gi, "Carpark");
+    // "IKEA (IKEA)" tells nobody anything.
+    if (words(label) === words(entry.placeName)) continue;
+    return label;
   }
   return null;
 }
@@ -768,9 +846,13 @@ function entryFor(place: Place, evidence: Evidence[]): OsmPlaceCarpark | null {
   const entrances = used.filter((item) => item.parking.entrance).map((item) => item.parking);
   let point: Parking | undefined;
   let carpark: Parking | undefined;
-  if (place.tier === "venue") {
-    // Prefer an entrance: one at the place, else one of a carpark at the place.
-    point = entrances[0] ?? areas.flatMap((area) => area.entrances)[0];
+  if (place.tier !== "open-space") {
+    // Prefer an entrance: one at the place, else one of a carpark at the place. For a retail area, which counts
+    // nothing outside its outline, that carpark's entrance must be inside it too.
+    const ownEntrances = areas
+      .flatMap((area) => area.entrances)
+      .filter((item) => place.tier !== "retail-area" || distanceToGeometry(item.point, place.feature.geometry) === 0);
+    point = entrances[0] ?? ownEntrances[0];
     carpark = point ? areas.find((area) => area.entrances.includes(point!)) ?? areas[0] : areas[0];
   } else {
     // An open space's carpark area, at one of its own entrances when one is mapped.

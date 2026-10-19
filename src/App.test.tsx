@@ -312,7 +312,7 @@ describe("ParkWhere app", () => {
     expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/way/177625322");
   });
 
-  it("shows a carpark mapped at a public place as mapped, with visitor access not confirmed", async () => {
+  it("shows a carpark mapped at a public place as mapped, with the entrance caveat and no access claim", async () => {
     const place = (relation: "at" | "next-to", atEntrance: boolean, id: string, name: string, evidence: string) => ({
       ...base,
       source: "osm" as const,
@@ -339,14 +339,15 @@ describe("ParkWhere app", () => {
     expect(within(card).getByText("No live count for this carpark")).toBeInTheDocument();
     expect(within(card).getByText("No estimate")).toBeInTheDocument();
     expect(within(card).getByText("Mapped on OpenStreetMap")).toBeInTheDocument();
-    expect(within(card).getByText("Visitor access not confirmed")).toBeInTheDocument();
+    expect(within(card).queryByText(/visitor access/i)).not.toBeInTheDocument();
     expect(within(card).queryByText(/public/i)).not.toBeInTheDocument();
     await user.click(within(card).getByText("Directions"));
     expect(
       within(card).getByText(
-        "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked. Visitor access isn't confirmed, so check the signs when you get there."
+        "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked. Check the signs when you get there."
       )
     ).toBeInTheDocument();
+    expect(within(card).queryByText(/visitor access/i)).not.toBeInTheDocument();
     await user.click(within(card).getByText("Rates"));
     expect(within(card).getByText("Rates not provided.")).toBeInTheDocument();
     expect(within(card).getByRole("link", { name: "OpenStreetMap" })).toHaveAttribute("href", "https://www.openstreetmap.org/node/13856188306");
