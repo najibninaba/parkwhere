@@ -353,6 +353,13 @@ function publicRegistry(file: OsmFile | null): RegistryCarpark[] {
   }));
 }
 
+/** An LTA or URA carpark this close to a carpark mapped at a place is the same carpark, whatever its name (Ridout Tea Garden). */
+export const SAME_SPOT_M = 30;
+
+/** LTA's short forms, spelt out so "Bt Panjang Plaza" matches "Bukit Panjang Plaza". */
+const ABBREVIATIONS: Record<string, string> = { bt: "bukit", jln: "jalan", rd: "road", ave: "avenue", st: "street", ctr: "centre", sq: "square", pk: "park", upp: "upper", lor: "lorong" };
+export const expandAbbreviations = (name: string) => name.replace(/\b([a-z]+)\b\.?/gi, (word, letters: string) => ABBREVIATIONS[letters.toLowerCase()] ?? word);
+
 /** OpenStreetMap gives no counts. */
 export const OSM_AVAILABILITY: CarAvailability = { reportedBy: null, state: "not-in-feed", available: null, total: null, recordedAt: null, freshness: "unknown" };
 
@@ -364,8 +371,9 @@ export const OSM_AVAILABILITY: CarAvailability = { reportedBy: null, state: "not
  * addresses are block numbers, so only distance applies to them. Uses a ~1 km grid to stay cheap per request.
  *
  * A carpark mapped at a public place is left out only when it's a true duplicate: within DUPLICATE_RADIUS_M of
- * an HDB carpark, or an LTA or URA carpark has the place's name within SAME_NAME_M (Suntec City). A nearby
- * LTA or URA carpark with another name is another carpark, so the place keeps its entry.
+ * an HDB carpark, or an LTA or URA carpark within SAME_SPOT_M or with the place's name within SAME_NAME_M
+ * (Suntec City; "Bt Panjang Plaza" for Bukit Panjang Plaza). A nearby LTA or URA carpark with another name is
+ * another carpark, so the place keeps its entry.
  */
 export function withoutDuplicates(osm: readonly RegistryCarpark[], others: readonly RegistryCarpark[]): RegistryCarpark[] {
   const cell = (lat: number, lng: number) => `${Math.floor(lat * 100)}:${Math.floor(lng * 100)}`;
@@ -383,7 +391,8 @@ export function withoutDuplicates(osm: readonly RegistryCarpark[], others: reado
           const place = carpark.osm?.place;
           if (place) {
             if ((other.source ?? "hdb") === "hdb") return distance <= DUPLICATE_RADIUS_M;
-            return other.source !== "osm" && distance <= SAME_NAME_M && sameName(place.name, other.address);
+            if (other.source === "osm") return false;
+            return distance <= SAME_SPOT_M || (distance <= SAME_NAME_M && sameName(expandAbbreviations(place.name), expandAbbreviations(other.address)));
           }
           if (distance <= DUPLICATE_RADIUS_M) return true;
           if ((other.source ?? "hdb") === "hdb") return false;

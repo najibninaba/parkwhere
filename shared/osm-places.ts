@@ -45,17 +45,20 @@ type Tier = "venue" | "open-space";
 const PLACE_TAGS: { key: string; values: string[]; kind: OsmPlaceKind; tier: Tier }[] = [
   { key: "leisure", values: ["sports_centre", "stadium"], kind: "sports", tier: "open-space" },
   { key: "leisure", values: ["park", "garden", "nature_reserve", "water_park"], kind: "park", tier: "open-space" },
-  { key: "shop", values: ["mall"], kind: "mall", tier: "venue" },
   { key: "aeroway", values: ["terminal"], kind: "terminal", tier: "venue" },
+  { key: "shop", values: ["mall"], kind: "mall", tier: "venue" },
   { key: "amenity", values: ["conference_centre", "exhibition_centre"], kind: "venue", tier: "venue" },
   { key: "tourism", values: ["attraction", "museum", "zoo", "theme_park", "aquarium", "gallery"], kind: "attraction", tier: "venue" }
 ];
 
-/** Staff and visitor parking can't be told apart at hospitals, clinics and campuses, so they're left out. */
+/**
+ * Staff and visitor parking can't be told apart at hospitals, clinics and campuses, and residents' and visitors'
+ * parking can't be told apart in a block of flats with shops below, so these places are left out.
+ */
 const CAMPUS_TAGS: Record<string, string[]> = {
   amenity: ["hospital", "clinic", "doctors", "university", "college", "school", "kindergarten"],
   healthcare: ["hospital", "clinic"],
-  building: ["hospital", "university", "college", "school"]
+  building: ["hospital", "university", "college", "school", "apartments", "residential", "house", "dormitory"]
 };
 const CAMPUS_NAME = /\b(hospital|polyclinic|clinic|school|university|college|polytechnic)\b/i;
 /** Park connectors and linear parks are paths: a carpark along one isn't "at" it. */
@@ -94,25 +97,45 @@ const EXIT = /\bexit\b/i;
 /** Text that says who may use it, when that isn't visitors: "Access to residents' carpark (level 2)". */
 const NOT_FOR_VISITORS = /\bresidents?\b|\bresidential\b|\bcondo(minium)?s?\b|\bstaff\b|\bemployees?\b|\btenants?\b|\bprivate\b|\bauthori[sz]ed\b|\bmembers?\b|\bvip\b/i;
 
-/** Under construction, disused, or not open yet. `today` is YYYY-MM-DD. */
+/** Under construction, disused, closed (end_date passed) or not open yet. `today` is YYYY-MM-DD. */
 function retired(feature: OsmFeature, today: string): boolean {
   if (["construction", "disused", "abandoned", "demolished"].some((key) => tag(feature, key) !== null)) return true;
-  if (tag(feature, "landuse") === "construction") return true;
-  const opening = tag(feature, "opening_date");
-  if (opening && /^\d{4}(-\d{2}){0,2}$/.test(opening) && opening > today.slice(0, opening.length)) return true;
+  if (tag(feature, "landuse") === "construction" || tag(feature, "building") === "construction") return true;
+  const date = (key: string) => {
+    const value = tag(feature, key);
+    return value && /^\d{4}(-\d{2}){0,2}$/.test(value) ? { value, today: today.slice(0, value.length) } : null;
+  };
+  const opening = date("opening_date");
+  if (opening && opening.value > opening.today) return true;
+  const end = date("end_date");
+  if (end && end.value <= end.today) return true;
   return ["name", "description", "note"].some((key) => CLOSED.test(tag(feature, key) ?? ""));
 }
 
 /**
+ * Cars may use it. Unlike shared/osm.ts's carsAllowed, any mode-specific restriction rules it out
+ * (motorcar=delivery, vehicle=forestry), and so does parking for buses, coaches or goods vehicles
+ * (bus=yes, psv=designated) unless cars are explicitly allowed too.
+ */
+const OPEN_MODE = new Set(["", "yes", "customers", "permissive", "destination", "public", "designated"]);
+function carsOpen(feature: OsmFeature): boolean {
+  if (!["motorcar", "motor_vehicle", "vehicle"].every((key) => OPEN_MODE.has(tag(feature, key) ?? ""))) return false;
+  const otherVehicles = ["bus", "psv", "hgv", "goods", "coach", "tourist_bus"].some((key) => ["yes", "designated"].includes(tag(feature, key) ?? ""));
+  return !otherVehicles || ["yes", "designated"].includes(tag(feature, "motorcar") ?? "");
+}
+
+/**
  * A parking feature that could be a visitor carpark: amenity=parking or parking_entrance, open or untagged
- * access, cars allowed, not for heavy vehicles, loading, drop-off, season holders, coaches, motorcycles or
- * disabled drivers only, not HDB-run, not street parking, not an exit or service entrance, not described as
+ * access, open to cars (no mode-specific restriction, not for buses or goods vehicles), not for heavy
+ * vehicles, loading, drop-off, season holders, coaches, motorcycles or disabled drivers only, not HDB-run, not street parking, not an exit or service entrance, not described as
  * for residents, staff or tenants, not named after a hospital or school, and not closed.
  */
 export function possibleVisitorParking(feature: OsmFeature, today: string): boolean {
   const amenity = tag(feature, "amenity");
   if (amenity !== "parking" && amenity !== "parking_entrance") return false;
-  if (!OPEN_ACCESS.has(tag(feature, "access") ?? "") || !carsAllowed(feature) || notForCars(feature) || hdbRun(feature)) return false;
+  // An entrance is a point; one mapped as an area isn't a carpark and isn't used.
+  if (amenity === "parking_entrance" && feature.geometry.type !== "Point") return false;
+  if (!OPEN_ACCESS.has(tag(feature, "access") ?? "") || !carsAllowed(feature) || !carsOpen(feature) || notForCars(feature) || hdbRun(feature)) return false;
   if (EXCLUDED_PARKING.has(tag(feature, "parking") ?? "")) return false;
   if (["exit", "service"].includes(tag(feature, "entrance") ?? "") || EXIT.test(tag(feature, "name") ?? "")) return false;
   if (["name", "description", "note", "parking:condition"].some((key) => NOT_FOR_VISITORS.test(tag(feature, key) ?? ""))) return false;
@@ -155,6 +178,8 @@ export function placeOf(feature: OsmFeature, today: string): Place | null {
   const match = PLACE_TAGS.find(({ key, values }) => values.includes(tag(feature, key) ?? ""));
   if (!match) return null;
   if (Object.entries(CAMPUS_TAGS).some(([key, values]) => values.includes(tag(feature, key) ?? "")) || CAMPUS_NAME.test(name)) return null;
+  // place=* marks a neighbourhood or locality (Emerald Hill), not a venue with a carpark of its own.
+  if (tag(feature, "place") !== null) return null;
   if (["private", "no"].includes(tag(feature, "access") ?? "")) return null;
   if (CONNECTOR.test(name) || generic(name) || retired(feature, today)) return null;
   const area = polygons(feature.geometry).reduce((sum, [outer]) => sum + Math.abs(ringArea(outer ?? [])), 0);
@@ -171,6 +196,48 @@ function boundsOf(geometry: Geometry, marginM = 0): Bounds {
   return { minLat: Math.min(...lats) - dLat, maxLat: Math.max(...lats) + dLat, minLng: Math.min(...lngs) - dLng, maxLng: Math.max(...lngs) + dLng };
 }
 const within = (point: Point, b: Bounds) => point.lat >= b.minLat && point.lat <= b.maxLat && point.lng >= b.minLng && point.lng <= b.maxLng;
+
+/** Buildings that are carparks themselves (a mall's multi-storey carpark block) don't claim an entrance. */
+const PARKING_BUILDINGS = new Set(["parking", "garage", "garages", "carport"]);
+
+/**
+ * Finds how far a point is from the nearest building other than a place, within `limit` metres: Infinity when
+ * none is closer. Buildings that are carparks, the place itself and buildings inside the place don't count.
+ */
+function buildingIndex(buildings: readonly OsmFeature[]) {
+  const CELL = 0.002; // about 220 m
+  const key = (lat: number, lng: number) => `${Math.floor(lat / CELL)}:${Math.floor(lng / CELL)}`;
+  const grid = new Map<string, { feature: OsmFeature; id: string; middle: Point }[]>();
+  for (const feature of buildings) {
+    if (feature.geometry.type === "Point" || tag(feature, "amenity") === "parking" || tag(feature, "parking") !== null) continue;
+    if (PARKING_BUILDINGS.has(tag(feature, "building") ?? "")) continue;
+    const b = boundsOf(feature.geometry);
+    const item = { feature, id: osmId(feature), middle: centroid(feature.geometry) };
+    for (let lat = Math.floor(b.minLat / CELL); lat <= Math.floor(b.maxLat / CELL); lat += 1) {
+      for (let lng = Math.floor(b.minLng / CELL); lng <= Math.floor(b.maxLng / CELL); lng += 1) {
+        const cell = `${lat}:${lng}`;
+        grid.set(cell, [...(grid.get(cell) ?? []), item]);
+      }
+    }
+  }
+  return (point: Point, limit: number, place: OsmFeature): number => {
+    const placeId = osmId(place);
+    const seen = new Set<string>();
+    let best = Infinity;
+    for (const dLat of [-1, 0, 1]) {
+      for (const dLng of [-1, 0, 1]) {
+        for (const item of grid.get(key(point.lat + dLat * CELL, point.lng + dLng * CELL)) ?? []) {
+          if (seen.has(item.id) || item.id === placeId) continue;
+          seen.add(item.id);
+          if (distanceToGeometry(item.middle, place.geometry) === 0) continue;
+          const distance = distanceToGeometry(point, item.feature.geometry);
+          if (distance < limit) best = Math.min(best, distance);
+        }
+      }
+    }
+    return best;
+  };
+}
 
 /** A parking feature that may be evidence, with what's needed to group it and choose a point. */
 interface Parking {
@@ -208,6 +275,7 @@ export interface PlaceSelection {
  * - Open spaces (parks, gardens, nature reserves, sports centres, stadiums, water parks): only a carpark area
  *   inside the outline. The point is its middle, or one of its entrances.
  * - Every feature passes possibleVisitorParking, and an entrance also needs every carpark it's at to pass.
+ * - Evidence just outside a venue's outline doesn't count when it's closer to another building (`buildings`).
  * - A feature that is HDB-run or within DUPLICATE_RADIUS_M of an HDB carpark is dropped; data.gov.sg lists it.
  * - A place that already has a public carpark from `shown` (osm-carparks.json) gets no entry.
  * - One carpark makes at most one entry. Places that share one are resolved in favour of venues, then
@@ -218,15 +286,21 @@ export function selectPlaceCarparks(
   parkingFeatures: readonly OsmFeature[],
   hdb: readonly Point[],
   shown: readonly OsmCarpark[],
-  today: string
+  today: string,
+  buildings: readonly OsmFeature[] = []
 ): PlaceSelection {
   const nearHdb = (point: Point) => hdb.some((carpark) => distanceM(point, carpark) <= DUPLICATE_RADIUS_M);
   const shownIds = new Set(shown.map((carpark) => carpark.id));
   const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id, "en", { numeric: true });
+  const nearestBuilding = buildingIndex(buildings);
 
   // Every parking feature, with its own verdict. Areas and points are carparks; entrances are joined to them.
+  // An entrance mapped as an area is neither, so it's left out.
   const all = parkingFeatures
-    .filter((feature) => ["parking", "parking_entrance"].includes(tag(feature, "amenity") ?? ""))
+    .filter((feature) => {
+      const amenity = tag(feature, "amenity");
+      return amenity === "parking" || (amenity === "parking_entrance" && feature.geometry.type === "Point");
+    })
     .map((feature) => ({ feature, id: osmId(feature), point: centroid(feature.geometry), entrance: tag(feature, "amenity") === "parking_entrance" && feature.geometry.type === "Point" }))
     .filter((parking) => isInSingapore(parking.point.lat, parking.point.lng))
     .sort(byId);
@@ -286,7 +360,10 @@ export function selectPlaceCarparks(
       if (place.tier === "open-space" && !area) return null;
       const distance = distanceToGeometry(parking.point, feature.geometry);
       if (place.tier === "open-space") return distance === 0 ? { distanceM: 0, named: false } : null;
-      if (distance <= NEXT_TO_M && (area || parking.entrance)) return { distanceM: distance, named: false };
+      // Just outside the outline, it must not be closer to (or inside) another building: then it's that building's.
+      const otherBuilding = () => nearestBuilding(parking.point, distance, feature) < distance;
+      if (distance === 0 && (area || parking.entrance)) return { distanceM: 0, named: false };
+      if (distance <= NEXT_TO_M && (area || parking.entrance) && !otherBuilding()) return { distanceM: distance, named: false };
       if (area && distance <= NAMED_AFTER_M && namedAfter(tag(parking.feature, "name"), place.name)) return { distanceM: distance, named: true };
       return null;
     };
@@ -316,33 +393,39 @@ export function selectPlaceCarparks(
   }
 
   // Venues first, then places with a carpark inside, then the smaller (more specific) place.
-  const built = candidates
-    .map((candidate) => ({ ...candidate, entry: entryFor(candidate.place, candidate.evidence) }))
-    .filter((candidate): candidate is Candidate & { entry: OsmPlaceCarpark } => candidate.entry !== null);
+  const built = candidates.filter((candidate) => entryFor(candidate.place, candidate.evidence) !== null);
   const tierRank = (tier: Tier) => (tier === "venue" ? 0 : 1);
-  built.sort(
-    (a, b) =>
-      tierRank(a.place.tier) - tierRank(b.place.tier) ||
-      (a.entry.relation === "at" ? 0 : 1) - (b.entry.relation === "at" ? 0 : 1) ||
-      a.place.area - b.place.area ||
-      byId(a.place, b.place)
-  );
+  type Ranked = { place: Place; entry: OsmPlaceCarpark };
+  const rank = (a: Ranked, b: Ranked) =>
+    tierRank(a.place.tier) - tierRank(b.place.tier) ||
+    (a.entry.relation === "at" ? 0 : 1) - (b.entry.relation === "at" ? 0 : 1) ||
+    a.place.area - b.place.area ||
+    byId(a.place, b.place);
+  // Take the best place first, then rank the rest again on what's left: a place that lost the carparks inside
+  // it to another place falls back to "next to" and ranks as that.
   const used = new Set<string>();
   const kept: { entry: OsmPlaceCarpark; place: Place }[] = [];
-  for (const { place, evidence } of built) {
-    const free = evidence.filter((item) => !used.has(item.parking.group));
-    const entry = free.length > 0 ? entryFor(place, free) : null;
+  let remaining = built.map(({ place, evidence }) => ({ place, evidence }));
+  while (remaining.length > 0) {
+    const ranked = remaining.map((candidate) => {
+      const free = candidate.evidence.filter((item) => !used.has(item.parking.group));
+      return { ...candidate, free, entry: free.length > 0 ? entryFor(candidate.place, free) : null };
+    });
+    for (const gone of ranked.filter((candidate) => !candidate.entry)) removed.shared.push(gone.place.id);
+    const live = ranked.filter((candidate): candidate is typeof candidate & { entry: OsmPlaceCarpark } => candidate.entry !== null);
+    if (live.length === 0) break;
+    const best = live.reduce((a, b) => (rank(a, b) <= 0 ? a : b));
+    remaining = live.filter((candidate) => candidate !== best).map(({ place, evidence }) => ({ place, evidence }));
+    const { place, evidence, free, entry } = best;
     // A place that lost a carpark to another place, and whose next carpark is beside that place's, is the same.
     // So is one mapped in several parts with one name (Suntec City's towers), unless the parts are far apart.
-    const collapsed =
-      entry !== null &&
-      kept.some(
-        (other) =>
-          (free.length < evidence.length && distanceM(other.entry, entry) <= SAME_PLACE_M) ||
-          (words(other.place.name) === words(place.name) &&
-            Math.min(distanceToGeometry(entry, other.place.feature.geometry), distanceToGeometry(other.entry, place.feature.geometry)) <= SAME_NAME_M)
-      );
-    if (!entry || collapsed) {
+    const collapsed = kept.some(
+      (other) =>
+        (free.length < evidence.length && distanceM(other.entry, entry) <= SAME_PLACE_M) ||
+        (words(other.place.name) === words(place.name) &&
+          Math.min(distanceToGeometry(entry, other.place.feature.geometry), distanceToGeometry(other.entry, place.feature.geometry)) <= SAME_NAME_M)
+    );
+    if (collapsed) {
       removed.shared.push(place.id);
       continue;
     }
@@ -359,8 +442,10 @@ export function selectPlaceCarparks(
 function entryFor(place: Place, evidence: Evidence[]): OsmPlaceCarpark | null {
   const inside = evidence.filter((item) => item.distanceM === 0);
   const relation: OsmPlaceRelation = inside.length > 0 ? "at" : "next-to";
+  // Closest first; then an entrance that says what it's for (parking=*, maxheight) over a bare one.
+  const described = (item: Evidence) => (tag(item.parking.feature, "parking") !== null || tag(item.parking.feature, "maxheight") !== null ? 0 : 1);
   const used = [...(inside.length > 0 ? inside : evidence)].sort(
-    (a, b) => a.distanceM - b.distanceM || a.parking.id.localeCompare(b.parking.id, "en", { numeric: true })
+    (a, b) => a.distanceM - b.distanceM || described(a) - described(b) || a.parking.id.localeCompare(b.parking.id, "en", { numeric: true })
   );
   const areas = used.filter((item) => !item.parking.entrance).map((item) => item.parking);
   const entrances = used.filter((item) => item.parking.entrance).map((item) => item.parking);

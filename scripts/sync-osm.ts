@@ -101,13 +101,17 @@ async function main() {
   osmium("tags-filter", "--overwrite", "-o", file("places.osm.pbf"), file("singapore.osm.pbf"), ...PLACE_FILTERS);
   osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=polygon", "--overwrite", "-o", file("places.geojsonseq"), file("places.osm.pbf"));
   const placeFeatures = readGeojsonSeq(await readFile(file("places.geojsonseq"), "utf8"));
+  // Building outlines, so an entrance just outside a place that's closer to another building isn't the place's.
+  osmium("tags-filter", "--overwrite", "-o", file("buildings.osm.pbf"), file("singapore.osm.pbf"), "w/building", "r/building");
+  osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=polygon", "--overwrite", "-o", file("buildings.geojsonseq"), file("buildings.osm.pbf"));
+  const buildings = readGeojsonSeq(await readFile(file("buildings.geojsonseq"), "utf8"));
 
   const registry = JSON.parse(await readFile(REGISTRY, "utf8")) as RegistryFile;
   const carparks = selectOsmCarparks(features, registry.carparks);
   const dataAt = osmium("fileinfo", "-g", "header.option.osmosis_replication_timestamp", source).trim() || null;
   // The extract's own date, so an unchanged refresh leaves the file unchanged.
   const today = (dataAt ?? new Date().toISOString()).slice(0, 10);
-  const { places, removed } = selectPlaceCarparks(placeFeatures, features, registry.carparks, carparks, today);
+  const { places, removed } = selectPlaceCarparks(placeFeatures, features, registry.carparks, carparks, today, buildings);
   const out: OsmFile = {
     source: { name: "OpenStreetMap", licence: "ODbL-1.0", extract: EXTRACT_URL, dataAt },
     carparks,

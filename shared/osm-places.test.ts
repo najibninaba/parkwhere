@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import sample from "../fixtures/osm-places.sample.json";
 import type { OsmCarpark, OsmFile, RegistryCarpark } from "./domain";
 import { distanceM } from "./nearby";
-import { OSM_AVAILABILITY, osmId, osmRegistry, placeCarparkTitle, withoutDuplicates, type OsmFeature } from "./osm";
+import { OSM_AVAILABILITY, expandAbbreviations, osmId, osmRegistry, placeCarparkTitle, withoutDuplicates, type OsmFeature } from "./osm";
 import { GENERIC_PLACE_NAMES, namedAfter, placeOf, possibleVisitorParking, selectPlaceCarparks } from "./osm-places";
 import { estimateCost } from "./tariff";
 
@@ -11,9 +11,11 @@ const places = sample.places as unknown as OsmFeature[];
 const parking = sample.parking as unknown as OsmFeature[];
 const hdb = sample.hdb;
 const shown = sample.shown as unknown as OsmCarpark[];
+const buildings = sample.buildings as unknown as OsmFeature[];
 const feature = (id: string) => [...places, ...parking].find((item) => osmId(item) === id)!;
-const run = (overrides: { places?: OsmFeature[]; parking?: OsmFeature[]; hdb?: { lat: number; lng: number }[]; shown?: OsmCarpark[] } = {}) =>
-  selectPlaceCarparks(overrides.places ?? places, overrides.parking ?? parking, overrides.hdb ?? hdb, overrides.shown ?? shown, TODAY);
+type Overrides = { places?: OsmFeature[]; parking?: OsmFeature[]; hdb?: { lat: number; lng: number }[]; shown?: OsmCarpark[]; buildings?: OsmFeature[] };
+const run = (overrides: Overrides = {}) =>
+  selectPlaceCarparks(overrides.places ?? places, overrides.parking ?? parking, overrides.hdb ?? hdb, overrides.shown ?? shown, TODAY, overrides.buildings ?? buildings);
 const selected = run();
 const entry = (id: string) => selected.places.find((place) => place.id === id);
 const pointOf = (id: string) => {
@@ -31,11 +33,12 @@ const withTags = (base: OsmFeature, tags: Record<string, string | undefined>): O
 describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
   it("lists one carpark per place, and only places with one mapped there", () => {
     expect(selected.places.map((place) => `${place.placeName}: ${place.relation}`)).toEqual([
+      "Bedok Mall: at",
       "i12 Katong: at",
       "Tampines Mall: at",
+      "Velocity @ Novena Square: next-to",
       "Square 2: at",
       "Singapore Expo: at",
-      "Funan: next-to",
       "Jewel Changi Basement: at",
       "Hampstead Wetlands Park: at",
       "Causeway Point: at",
@@ -75,11 +78,34 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
     expect(namedAfter("NEX Carpark", "NEX")).toBe(true);
   });
 
-  it("says next to when the carpark is just outside the outline, and never uses Funan's exit", () => {
-    expect(entry("way/432515092")).toMatchObject({ relation: "next-to", atEntrance: true, evidence: ["node/612392167", "node/6045374651"] });
-    expect(possibleVisitorParking(feature("node/12525830322"), TODAY)).toBe(false);
-    expect(placeCarparkTitle(entry("way/432515092")!)).toBe("Carpark mapped next to Funan");
+  it("says next to when the carpark is just outside the outline, and at when it's inside", () => {
+    expect(entry("way/172529118")).toMatchObject({ relation: "next-to", atEntrance: true, parking: "underground", evidence: ["node/11823943799"] });
+    expect(placeCarparkTitle(entry("way/172529118")!)).toBe("Carpark mapped next to Velocity @ Novena Square");
     expect(placeCarparkTitle(entry("way/172529121")!)).toBe("Carpark mapped at Square 2");
+  });
+
+  it("never takes an entrance just outside a place that is closer to another building", () => {
+    // Icon Village's only nearby entrance is inside the Mapletree Anson tower, 18 m from the mall.
+    expect(entry("way/152598430")).toBeUndefined();
+    expect(run({ buildings: [] }).places.find((place) => place.id === "way/152598430")?.evidence).toEqual(["node/7037935683"]);
+    // Funan's two untagged entrances are 5 and 9 m from Funan but under 5 m from the office at 100 High Street.
+    expect(entry("way/432515092")).toBeUndefined();
+    expect(run({ buildings: [] }).places.find((place) => place.id === "way/432515092")).toMatchObject({ relation: "next-to", evidence: ["node/612392167", "node/6045374651"] });
+    // And Funan's exit is never used.
+    expect(possibleVisitorParking(feature("node/12525830322"), TODAY)).toBe(false);
+  });
+
+  it("points a mall at its car entrance, never the bus interchange's", () => {
+    // Bedok Mall: node/5272230471 (bus=yes) and node/7474946002 (multi-storey, maxheight 4) are both inside.
+    expect(possibleVisitorParking(feature("node/5272230471"), TODAY)).toBe(false);
+    expect(entry("relation/9382787")).toMatchObject({ relation: "at", evidence: ["node/7474946002"], parking: "multi-storey", maxHeightM: 4 });
+  });
+
+  it("leaves out neighbourhoods and blocks of flats with shops below", () => {
+    expect(placeOf(feature("way/41662089"), TODAY)).toBeNull(); // Emerald Hill, place=neighbourhood
+    expect(placeOf(feature("way/328531477"), TODAY)).toBeNull(); // Balestier Plaza, building=apartments
+    expect(entry("way/41662089")).toBeUndefined();
+    expect(entry("way/328531477")).toBeUndefined();
   });
 
   it("never takes a park's carpark from an entrance, only from a carpark area inside it", () => {
@@ -89,14 +115,45 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
   });
 
   it("gives a shared entrance to one place: a venue, then the one it's inside, then the smaller", () => {
+    // Without building outlines, so the entrances just outside Royal Square and Katong Square still count.
+    const loose = run({ buildings: [] });
+    const looseEntry = (id: string) => loose.places.find((place) => place.id === id);
     // Royal Square at Novena and Square 2 share Novena Square 2's entrance; it's inside Square 2.
-    expect(entry("way/172529121")?.evidence).toEqual(["node/1834245738"]);
-    expect(entry("way/260571322")).toBeUndefined();
+    expect(looseEntry("way/172529121")?.evidence).toEqual(["node/1834245738"]);
+    expect(looseEntry("way/260571322")).toBeUndefined();
+    expect(loose.removed.shared).toContain("way/260571322");
     // Katong Square and i12 Katong share one entrance, inside i12 Katong.
-    expect(entry("way/44121574")?.evidence).toEqual(["node/4623296185"]);
-    expect(entry("way/561552023")).toBeUndefined();
-    const evidence = selected.places.flatMap((place) => place.evidence);
-    expect(new Set(evidence).size).toBe(evidence.length);
+    expect(looseEntry("way/44121574")?.evidence).toEqual(["node/4623296185"]);
+    expect(looseEntry("way/561552023")).toBeUndefined();
+    for (const result of [loose, selected]) {
+      const evidence = result.places.flatMap((place) => place.evidence);
+      expect(new Set(evidence).size).toBe(evidence.length);
+    }
+  });
+
+  it("ranks a place again once it has lost the carparks inside it", () => {
+    // A large mall holds a small mall with entrance A inside both; entrance B is 17 m outside the large mall
+    // and 17 m outside a second small mall. The first small mall takes A; the large mall is then only "next
+    // to" B, like the second small mall, which is smaller and so takes B.
+    const square = (id: number, name: string, west: number, south: number, size: number): OsmFeature =>
+      ({
+        type: "Feature",
+        geometry: { type: "MultiPolygon", coordinates: [[[[west, south], [west + size, south], [west + size, south + size], [west, south + size], [west, south]]]] },
+        properties: { "@type": "way", "@id": id, shop: "mall", name }
+      }) as OsmFeature;
+    const gate = (id: number, lng: number, lat: number): OsmFeature =>
+      ({ type: "Feature", geometry: { type: "Point", coordinates: [lng, lat] }, properties: { "@type": "node", "@id": id, amenity: "parking_entrance" } }) as OsmFeature;
+    const result = selectPlaceCarparks(
+      [square(1, "Large Mall", 103.85, 1.3, 0.001), square(2, "Inner Mall", 103.8502, 1.3002, 0.0002), square(3, "East Mall", 103.8513, 1.3004, 0.0002)],
+      [gate(10, 103.8503, 1.3003), gate(11, 103.85115, 1.3005)],
+      [],
+      [],
+      TODAY
+    );
+    expect(result.places.map((place) => [place.placeName, place.relation, place.evidence])).toEqual([
+      ["Inner Mall", "at", ["node/10"]],
+      ["East Mall", "next-to", ["node/11"]]
+    ]);
   });
 
   it("lists a place mapped in several parts with one name once", () => {
@@ -120,11 +177,14 @@ describe("selectPlaceCarparks (real OpenStreetMap features)", () => {
     const result = run({ hdb: [...hdb, { lat: pinery.lat + 0.00027, lng: pinery.lng }] });
     expect(result.places.some((place) => place.id === "way/1489454435")).toBe(false);
     expect(result.removed.hdb).toContain("way/1489454435");
-    // An HDB-run entrance is left out. The mall falls back to an entrance 27 m outside it; without that, it has no entry.
-    const hdbRun = (features: OsmFeature[]) =>
-      run({ parking: features.map((item) => (osmId(item) === "node/13652313510" ? withTags(item, { operator: "Housing & Development Board" }) : item)) });
-    expect(hdbRun(parking).places.find((place) => place.id === "way/1489454435")).toMatchObject({ relation: "next-to", evidence: ["node/12376189571"] });
-    expect(hdbRun(pineryOnly).places.some((place) => place.id === "way/1489454435")).toBe(false);
+    // An HDB-run entrance is left out. The other entrance near the mall, 27 m outside it, is 11 m from the flats
+    // at 973B Tampines Street 94, so it isn't the mall's either, and the mall has no entry. Without building
+    // outlines it would fall back to that entrance.
+    const hdbRun = (features: OsmFeature[], overrides: Overrides = {}) =>
+      run({ ...overrides, parking: features.map((item) => (osmId(item) === "node/13652313510" ? withTags(item, { operator: "Housing & Development Board" }) : item)) });
+    expect(hdbRun(parking).places.some((place) => place.id === "way/1489454435")).toBe(false);
+    expect(hdbRun(parking, { buildings: [] }).places.find((place) => place.id === "way/1489454435")).toMatchObject({ relation: "next-to", evidence: ["node/12376189571"] });
+    expect(hdbRun(pineryOnly, { buildings: [] }).places.some((place) => place.id === "way/1489454435")).toBe(false);
   });
 
   it("leaves out an entrance at a carpark that is private or not for cars", () => {
@@ -158,6 +218,12 @@ describe("possibleVisitorParking", () => {
       ...["private", "no", "permit", "delivery", "residents", "employees", "staff", "bus", "licence"].map((access) => ({ access })),
       { motorcar: "no" },
       { motor_vehicle: "private" },
+      { motorcar: "delivery" },
+      { motor_vehicle: "agricultural" },
+      { vehicle: "forestry" },
+      { bus: "yes" },
+      { psv: "designated" },
+      { goods: "yes" },
       { hgv: "yes" },
       { name: "Heavy Vehicle Park" },
       { note: "loading/unloading only" },
@@ -177,14 +243,29 @@ describe("possibleVisitorParking", () => {
       { note: "staff only" },
       { construction: "yes" },
       { disused: "yes" },
-      { opening_date: "2027-03" }
+      { building: "construction" },
+      { opening_date: "2027-03" },
+      { end_date: "2024-10" }
     ];
     for (const tags of rejected) expect([tags, possibleVisitorParking(withTags(entrance, tags), TODAY)]).toEqual([tags, false]);
-    for (const tags of [{ access: "yes" }, { access: "customers" }, { access: "destination" }, { opening_date: "2019" }, { parking: "underground" }]) {
+    const kept: Record<string, string>[] = [
+      { access: "yes" },
+      { access: "customers" },
+      { access: "destination" },
+      { motorcar: "yes" },
+      { bus: "yes", motorcar: "yes" },
+      { opening_date: "2019" },
+      { end_date: "2030" },
+      { parking: "underground" }
+    ];
+    for (const tags of kept) {
       expect([tags, possibleVisitorParking(withTags(entrance, tags), TODAY)]).toEqual([tags, true]);
     }
     expect(possibleVisitorParking(withTags(entrance, { amenity: "parking_exit" }), TODAY)).toBe(false);
     expect(possibleVisitorParking(withTags(entrance, { amenity: undefined, entrance: "yes" }), TODAY)).toBe(false);
+    // An entrance mapped as an area isn't used (way/1264215746 is one).
+    const mall = feature("way/1489454435");
+    expect(possibleVisitorParking({ ...entrance, geometry: mall.geometry }, TODAY)).toBe(false);
   });
 });
 
@@ -196,6 +277,8 @@ describe("placeOf", () => {
     expect(placeOf(mall, TODAY)).toMatchObject({ name: "Pinery Mall", kind: "mall", tier: "venue" });
     expect(placeOf(park, TODAY)).toMatchObject({ kind: "park", tier: "open-space" });
     expect(placeOf(withTags(mall, { shop: undefined, aeroway: "terminal" }), TODAY)).toMatchObject({ kind: "terminal", tier: "venue" });
+    // Changi Airport's terminals are also tagged shop=mall; they're terminals.
+    expect(placeOf(withTags(mall, { aeroway: "terminal" }), TODAY)).toMatchObject({ kind: "terminal" });
     expect(placeOf(withTags(mall, { shop: undefined, tourism: "museum" }), TODAY)).toMatchObject({ kind: "attraction", tier: "venue" });
     expect(placeOf(withTags(mall, { leisure: "stadium" }), TODAY)).toMatchObject({ kind: "sports", tier: "open-space" });
     expect(placeOf(withTags(park, { tourism: "attraction" }), TODAY)).toMatchObject({ tier: "open-space" });
@@ -218,8 +301,13 @@ describe("placeOf", () => {
       { construction: "yes" },
       { disused: "yes" },
       { landuse: "construction" },
+      { building: "construction" },
       { opening_date: "2027-01-01" },
-      { name: "Pinery Mall (closed)" }
+      { end_date: "2024-10-05" },
+      { name: "Pinery Mall (closed)" },
+      { building: "apartments" },
+      { building: "residential" },
+      { place: "neighbourhood" }
     ];
     for (const tags of rejected) expect([tags, placeOf(withTags(park, tags), TODAY)]).toEqual([tags, null]);
     expect(placeOf({ ...park, geometry: { type: "Point", coordinates: [103.87, 1.41] } }, TODAY)).toBeNull();
@@ -245,28 +333,41 @@ describe("carparks mapped at public places at run time", () => {
   const byPlace = (name: string) => registry.find((carpark) => carpark.osm?.place?.name === name)!;
 
   it("names the place and what was mapped, links the mapped feature and never claims access", () => {
-    expect(byPlace("Funan")).toMatchObject({
+    expect(byPlace("Velocity @ Novena Square")).toMatchObject({
       source: "osm",
-      id: "osm:place:way/432515092",
-      address: "Carpark mapped next to Funan",
-      carparkType: "Carpark entrance",
-      osm: { url: "https://www.openstreetmap.org/node/612392167", access: "unknown", atEntrance: true, place: { name: "Funan", kind: "mall", relation: "next-to" } }
+      id: "osm:place:way/172529118",
+      address: "Carpark mapped next to Velocity @ Novena Square",
+      carparkType: "Underground carpark entrance",
+      osm: { url: "https://www.openstreetmap.org/node/11823943799", access: "unknown", atEntrance: true, place: { name: "Velocity @ Novena Square", kind: "mall", relation: "next-to" } }
     });
     expect(byPlace("Jewel Changi Basement")).toMatchObject({ address: "Carpark mapped at Jewel Changi Basement", carparkType: "Underground carpark entrance", gantryHeightM: 2.1 });
     expect(byPlace("Hampstead Wetlands Park")).toMatchObject({ carparkType: "Carpark", osm: { atEntrance: false } });
     expect(OSM_AVAILABILITY.available).toBeNull();
-    expect(estimateCost(byPlace("Funan"), new Date("2026-10-19T02:00:00Z"), 120).kind).toBe("unavailable");
+    expect(estimateCost(byPlace("Velocity @ Novena Square"), new Date("2026-10-19T02:00:00Z"), 120).kind).toBe("unavailable");
   });
 
-  it("drops one only when an HDB carpark is within 80 m or an LTA or URA carpark has the place's name", () => {
-    const funan = byPlace("Funan");
-    const lta = (name: string, dLat: number) => ({ ...funan, source: "lta", id: `lta:${name}`, address: name, lat: funan.lat + dLat, osm: undefined }) as RegistryCarpark;
-    const hdbAt = (dLat: number) => ({ ...funan, source: undefined, id: "X1", address: "BLK 1", lat: funan.lat + dLat, osm: undefined }) as RegistryCarpark;
-    expect(withoutDuplicates([funan], [lta("Funan Mall", 0.002)])).toEqual([]);
-    // Another carpark nearby, even 30 m away, is a different carpark.
-    expect(withoutDuplicates([funan], [lta("Capitol Singapore", 0.0003)])).toHaveLength(1);
-    expect(withoutDuplicates([funan], [lta("Funan Mall", 0.004)])).toHaveLength(1);
-    expect(withoutDuplicates([funan], [hdbAt(0.0005)])).toEqual([]);
-    expect(withoutDuplicates([funan], [hdbAt(0.0012)])).toHaveLength(1);
+  it("drops one only as a true duplicate: HDB within 80 m, an LTA or URA carpark within 30 m or with the place's name", () => {
+    const velocity = byPlace("Velocity @ Novena Square");
+    const lta = (name: string, dLat: number, source = "lta") =>
+      ({ ...velocity, source, id: `${source}:${name}`, address: name, lat: velocity.lat + dLat, osm: undefined }) as RegistryCarpark;
+    const hdbAt = (dLat: number) => ({ ...velocity, source: undefined, id: "X1", address: "BLK 1", lat: velocity.lat + dLat, osm: undefined }) as RegistryCarpark;
+    expect(withoutDuplicates([velocity], [lta("Velocity", 0.002)])).toEqual([]);
+    // A differently named carpark 50 m away is another carpark; one 20 m away is this one.
+    expect(withoutDuplicates([velocity], [lta("United Square", 0.00045)])).toHaveLength(1);
+    expect(withoutDuplicates([velocity], [lta("Queensway (off-street) (Ride Out Tea Garden)", 0.00018, "ura")])).toEqual([]);
+    expect(withoutDuplicates([velocity], [lta("Velocity", 0.004)])).toHaveLength(1);
+    expect(withoutDuplicates([velocity], [hdbAt(0.0005)])).toEqual([]);
+    expect(withoutDuplicates([velocity], [hdbAt(0.0012)])).toHaveLength(1);
+    // LTA's short forms: "Bt Panjang Plaza" is Bukit Panjang Plaza.
+    const plaza = { ...velocity, osm: { ...velocity.osm!, place: { name: "Bukit Panjang Plaza", kind: "mall" as const, relation: "at" as const } } };
+    expect(withoutDuplicates([plaza], [lta("Bt Panjang Plaza", 0.0005)])).toEqual([]);
+    expect(expandAbbreviations("Bt Panjang Plaza")).toBe("bukit Panjang Plaza");
+  });
+
+  it("leaves public OpenStreetMap carparks' dedupe as it was", () => {
+    const publicOne = { ...byPlace("Velocity @ Novena Square"), id: "osm:node/1", address: "Novena Square Carpark", osm: { url: "x", access: "yes" as const, atEntrance: true, named: true } };
+    const lta = { ...publicOne, source: "lta" as const, id: "lta:9", address: "United Square", lat: publicOne.lat + 0.0005, osm: undefined };
+    // Within DUPLICATE_RADIUS_M (80 m) of any LTA carpark, a public OpenStreetMap carpark is still left out.
+    expect(withoutDuplicates([publicOne, byPlace("Velocity @ Novena Square")], [lta]).map((carpark) => carpark.id)).toEqual(["osm:place:way/172529118"]);
   });
 });
