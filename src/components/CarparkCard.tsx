@@ -100,7 +100,7 @@ function directionsHint(carpark: NearbyCarpark): string {
   if (osm?.place) {
     const point = osm.atEntrance
       ? "Goes to a carpark entrance mapped on OpenStreetMap, which ParkWhere hasn't checked."
-      : "Goes to the middle of a carpark mapped on OpenStreetMap, which ParkWhere hasn't checked. It may not be the entrance.";
+      : "Goes to a spot on a carpark mapped on OpenStreetMap, which ParkWhere hasn't checked. It may not be the entrance.";
     return `${point} Visitor access isn't confirmed, so check the signs when you get there.`;
   }
   return osm?.atEntrance

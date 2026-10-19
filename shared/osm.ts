@@ -120,6 +120,12 @@ export function polygons(geometry: Geometry): Position[][][] {
  */
 export function distanceToGeometry(point: Point, geometry: Geometry): number {
   if (geometry.type === "Point") return distanceM(point, { lat: geometry.coordinates[1], lng: geometry.coordinates[0] });
+  const { inside, edgeM } = edgeDistance(point, geometry);
+  return inside ? 0 : edgeM;
+}
+
+/** Whether a point is inside a polygon or multipolygon (not in a hole), and metres to its nearest edge. */
+function edgeDistance(point: Point, geometry: Geometry): { inside: boolean; edgeM: number } {
   const kx = 111_320 * Math.cos((point.lat * Math.PI) / 180);
   const ky = 110_574;
   const xy = (p: Position) => [(p[0] - point.lng) * kx, (p[1] - point.lat) * ky] as const;
@@ -145,7 +151,86 @@ export function distanceToGeometry(point: Point, geometry: Geometry): number {
     const inHole = holes.map(scan).some(Boolean);
     if (inOuter && !inHole) inside = true;
   }
-  return inside ? 0 : best;
+  return { inside, edgeM: best };
+}
+
+/**
+ * A point well inside a carpark area: the centre of the largest circle that fits in its largest part (its pole
+ * of inaccessibility), found to within about half a metre. A centroid can fall outside a ring-shaped or
+ * L-shaped carpark, on grass or inside a building.
+ */
+export function interiorPoint(geometry: Geometry): Point {
+  const middle = centroid(geometry);
+  let part: Position[][] | null = null;
+  let largest = -1;
+  for (const polygon of polygons(geometry)) {
+    const area = Math.abs(ringArea(polygon[0] ?? []));
+    if ((polygon[0]?.length ?? 0) >= 4 && area > largest) { part = polygon; largest = area; }
+  }
+  if (!part) return middle;
+  const shape: Geometry = { type: "Polygon", coordinates: part };
+  const lats = part[0].map((p) => p[1]);
+  const lngs = part[0].map((p) => p[0]);
+  const south = Math.min(...lats);
+  const west = Math.min(...lngs);
+  const kx = 111_320 * Math.cos((south * Math.PI) / 180);
+  const ky = 110_574;
+  const width = (Math.max(...lngs) - west) * kx;
+  const height = (Math.max(...lats) - south) * ky;
+  const size = Math.min(width, height);
+  if (!(size > 0)) return middle;
+  /** Metres from the edge: positive inside, negative outside. */
+  const depth = (x: number, y: number) => {
+    const { inside, edgeM } = edgeDistance({ lat: south + y / ky, lng: west + x / kx }, shape);
+    return inside ? edgeM : -edgeM;
+  };
+  type Cell = { x: number; y: number; half: number; depth: number; best: number };
+  const cell = (x: number, y: number, half: number): Cell => {
+    const d = depth(x, y);
+    return { x, y, half, depth: d, best: d + half * Math.SQRT2 };
+  };
+  // Cells by how deep a point inside them could be, deepest first.
+  const queue: Cell[] = [];
+  const push = (item: Cell) => {
+    queue.push(item);
+    for (let i = queue.length - 1; i > 0; ) {
+      const parent = (i - 1) >> 1;
+      if (queue[parent].best >= queue[i].best) break;
+      [queue[parent], queue[i]] = [queue[i], queue[parent]];
+      i = parent;
+    }
+  };
+  const pop = (): Cell => {
+    const top = queue[0];
+    const last = queue.pop()!;
+    if (queue.length > 0) {
+      queue[0] = last;
+      for (let i = 0; ; ) {
+        const left = 2 * i + 1;
+        const right = left + 1;
+        let next = i;
+        if (left < queue.length && queue[left].best > queue[next].best) next = left;
+        if (right < queue.length && queue[right].best > queue[next].best) next = right;
+        if (next === i) break;
+        [queue[next], queue[i]] = [queue[i], queue[next]];
+        i = next;
+      }
+    }
+    return top;
+  };
+  for (let x = 0; x < width; x += size) for (let y = 0; y < height; y += size) push(cell(x + size / 2, y + size / 2, size / 2));
+  let found = cell((middle.lng - west) * kx, (middle.lat - south) * ky, 0);
+  const box = cell(width / 2, height / 2, 0);
+  if (box.depth > found.depth) found = box;
+  const PRECISION_M = 0.5;
+  for (let steps = 0; queue.length > 0 && steps < 10_000; steps += 1) {
+    const next = pop();
+    if (next.depth > found.depth) found = next;
+    if (next.best - found.depth <= PRECISION_M) continue;
+    const half = next.half / 2;
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) push(cell(next.x + dx * half, next.y + dy * half, half));
+  }
+  return found.depth > 0 ? { lat: south + found.y / ky, lng: west + found.x / kx } : middle;
 }
 
 const accessOf = (feature: OsmFeature): OsmAccess | null => {
@@ -301,9 +386,12 @@ export function placeCarparkType(place: Pick<OsmPlaceCarpark, "parking" | "atEnt
   return place.atEntrance ? `${kind} entrance` : kind;
 }
 
-/** A carpark mapped at a public place, as a card title: "Carpark mapped at Jewel Changi Airport". */
-export const placeCarparkTitle = (place: Pick<OsmPlaceCarpark, "placeName" | "relation">) =>
-  `Carpark mapped ${place.relation === "at" ? "at" : "next to"} ${place.placeName}`;
+/**
+ * A carpark mapped at a public place, as a card title: "Carpark mapped at Jewel Changi Airport", or with the
+ * carpark's own name when it has one in the file: "Carpark mapped at Changi Beach Park (Carpark 1)".
+ */
+export const placeCarparkTitle = (place: Pick<OsmPlaceCarpark, "placeName" | "relation" | "carparkName">) =>
+  `Carpark mapped ${place.relation === "at" ? "at" : "next to"} ${place.placeName}${place.carparkName ? ` (${place.carparkName})` : ""}`;
 
 /** Carparks mapped at public places, in the shape the nearby search uses. Access stays "unknown". */
 function placeRegistry(file: OsmFile | null): RegistryCarpark[] {

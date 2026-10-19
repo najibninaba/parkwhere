@@ -330,11 +330,11 @@ describe("ParkWhere app", () => {
     });
     nearbyResponse = () =>
       Response.json(nearby({ carparks: [
-            place("at", true, "way/547383951", "Jewel Changi Basement", "node/13856188306"),
+            place("at", true, "way/547383951", "Jewel Changi Airport", "node/13856188306"),
             place("next-to", false, "way/432515092", "Funan", "way/1")
           ] }));
     const user = await searchAndChoose();
-    const card = (await screen.findByText("Carpark mapped at Jewel Changi Basement")).closest("li")!;
+    const card = (await screen.findByText("Carpark mapped at Jewel Changi Airport")).closest("li")!;
     expect(within(card).getByText("140 m away · Underground carpark entrance")).toBeInTheDocument();
     expect(within(card).getByText("No live count for this carpark")).toBeInTheDocument();
     expect(within(card).getByText("No estimate")).toBeInTheDocument();
@@ -353,7 +353,7 @@ describe("ParkWhere app", () => {
 
     const next = screen.getByText("Carpark mapped next to Funan").closest("li")!;
     await user.click(within(next).getByText("Directions"));
-    expect(within(next).getByText(/Goes to the middle of a carpark mapped on OpenStreetMap, which ParkWhere hasn.t checked\. It may not be the entrance\./)).toBeInTheDocument();
+    expect(within(next).getByText(/Goes to a spot on a carpark mapped on OpenStreetMap, which ParkWhere hasn.t checked\. It may not be the entrance\./)).toBeInTheDocument();
   });
 
   it("says when LTA is down even if no mall carparks are listed", async () => {

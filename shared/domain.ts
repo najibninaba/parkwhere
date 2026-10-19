@@ -198,9 +198,14 @@ export interface OsmPlaceCarpark {
   placeName: string;
   placeKind: OsmPlaceKind;
   relation: OsmPlaceRelation;
+  /**
+   * The carpark's own mapped name, when the title needs it: the building it's under in a park ("SAFRA Choa
+   * Chu Kang"), or to tell apart places with the same name ("Carpark 1", "Carpark 6" at Changi Beach Park).
+   */
+  carparkName?: string;
   /** OpenStreetMap ids of the parking features that show the carpark; the first is where the point is. */
   evidence: string[];
-  /** True when the point is a mapped carpark entrance; otherwise it's the middle of a mapped carpark. */
+  /** True when the point is a mapped carpark entrance; otherwise it's a spot on a mapped carpark (where a road comes in, or well inside it). */
   atEntrance: boolean;
   parking: OsmCarpark["parking"];
   maxHeightM: number | null;

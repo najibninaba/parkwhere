@@ -12,7 +12,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { OsmFile, RegistryFile } from "../shared/domain.ts";
 import { selectOsmCarparks, type OsmFeature } from "../shared/osm.ts";
-import { selectPlaceCarparks } from "../shared/osm-places.ts";
+import { selectPlaceCarparks, type MapFeature } from "../shared/osm-places.ts";
 import { pathToFileURL } from "node:url";
 
 /** osmium tags-filter expressions for the place kinds shared/osm-places.ts knows. */
@@ -105,13 +105,21 @@ async function main() {
   osmium("tags-filter", "--overwrite", "-o", file("buildings.osm.pbf"), file("singapore.osm.pbf"), "w/building", "r/building");
   osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=polygon", "--overwrite", "-o", file("buildings.geojsonseq"), file("buildings.osm.pbf"));
   const buildings = readGeojsonSeq(await readFile(file("buildings.geojsonseq"), "utf8"));
+  // Roads, so an entrance on a private driveway or a carpark reached only by private roads is left out.
+  osmium("tags-filter", "--overwrite", "-o", file("roads.osm.pbf"), file("singapore.osm.pbf"), "w/highway");
+  osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=linestring,polygon", "--overwrite", "-o", file("roads.geojsonseq"), file("roads.osm.pbf"));
+  const roads = readGeojsonSeq(await readFile(file("roads.geojsonseq"), "utf8")) as unknown as MapFeature[];
+  // Construction sites and buildings under construction: anything inside them is closed.
+  osmium("tags-filter", "--overwrite", "-o", file("construction.osm.pbf"), file("singapore.osm.pbf"), "wr/landuse=construction", "wr/building=construction");
+  osmium("export", "-f", "geojsonseq", "-a", "type,id", "--geometry-types=polygon", "--overwrite", "-o", file("construction.geojsonseq"), file("construction.osm.pbf"));
+  const construction = readGeojsonSeq(await readFile(file("construction.geojsonseq"), "utf8"));
 
   const registry = JSON.parse(await readFile(REGISTRY, "utf8")) as RegistryFile;
   const carparks = selectOsmCarparks(features, registry.carparks);
   const dataAt = osmium("fileinfo", "-g", "header.option.osmosis_replication_timestamp", source).trim() || null;
   // The extract's own date, so an unchanged refresh leaves the file unchanged.
   const today = (dataAt ?? new Date().toISOString()).slice(0, 10);
-  const { places, removed } = selectPlaceCarparks(placeFeatures, features, registry.carparks, carparks, today, buildings);
+  const { places, removed } = selectPlaceCarparks(placeFeatures, features, registry.carparks, carparks, today, { buildings, roads, construction });
   const out: OsmFile = {
     source: { name: "OpenStreetMap", licence: "ODbL-1.0", extract: EXTRACT_URL, dataAt },
     carparks,
