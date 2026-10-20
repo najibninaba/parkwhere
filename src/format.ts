@@ -2,6 +2,13 @@ import { FEED_LIVE_MS } from "../shared/availability";
 import type { FeedStatus } from "../shared/domain";
 export { isCurrent, spaceLevel, type SpaceLevel } from "../shared/levels";
 
+/** Registry text such as "BLK 347A ANG MO KIO AVENUE 3" as "Blk 347A Ang Mo Kio Avenue 3", keeping block letters capitalised. */
+export const title = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (letter) => letter.toUpperCase())
+    .replace(/\b(\d+)([a-z])\b/g, (_, block: string, letter: string) => block + letter.toUpperCase());
+
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export function distance(m: number): string {
