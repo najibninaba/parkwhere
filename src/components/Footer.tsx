@@ -66,7 +66,7 @@ export function Footer({ registryFetchedAt, onFeedback }: Props) {
         To see whether it's useful, ParkWhere counts page loads, lookups, place searches, directions opened and errors, with the device type, country and referring site. It uses no cookies and doesn't record IDs, IP addresses, search text or exact locations. Nothing is counted when your browser sends Global Privacy Control or Do Not Track.
       </p>
       <p>
-        Feedback you send is kept for up to 12 months to fix carparks and improve the app, without your IP address, device or location.
+        Feedback you send is kept for up to 12 months to fix carparks and improve the app, without your IP address, device or location. Backups are deleted within 30 days after that.
         Questions or requests about a report you sent: <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. Say roughly when you sent it and what the note said, so it can be found.
       </p>
       <p>ParkWhere is an independent project and isn't affiliated with or endorsed by HDB, LTA, URA, SLA or GovTech.</p>
