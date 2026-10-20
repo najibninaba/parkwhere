@@ -6,6 +6,8 @@ Please don't open a public issue for a security problem. Use GitHub's **Report a
 
 Include what you found, how to reproduce it, and the impact you expect. You'll get a reply within a week.
 
+For privacy questions or requests about feedback you sent in the app, email privacy@bijan.app instead.
+
 ## Scope
 
 In scope:

@@ -403,4 +403,27 @@ describe("ParkWhere app", () => {
     const names = screen.getAllByRole("listitem").filter((item) => item.classList.contains("card")).map((item) => within(item).getByText(/^Blk/).textContent);
     expect(names[0]).toBe("Blk 1 Known Street");
   });
+  it("puts Report a problem on every card, and opens the sheet with that carpark", async () => {
+    const user = await searchAndChoose();
+    await screen.findByText("Blk 1 Known Street");
+    const links = screen.getAllByRole("button", { name: /^Report a problem with/ });
+    expect(links).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: "Report a problem with Blk 1 Known Street" }));
+    const dialog = screen.getByRole("dialog", { name: "Report a problem" });
+    expect(within(dialog).getByText("Blk 1 Known Street (K1)")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("radio", { name: "The count looks wrong" }));
+    expect(within(dialog).getByText(/Your report includes what the card showed: 42 car lots available out of 100, reported /)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Report a problem with Blk 1 Known Street" })).toHaveFocus();
+  });
+
+  it("offers general feedback and missing carparks from the footer, with the privacy address", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(screen.getByText(/Feedback you send is kept for up to 12 months/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "privacy@bijan.app" })).toHaveAttribute("href", "mailto:privacy@bijan.app");
+    await user.click(screen.getByRole("button", { name: "Tell us" }));
+    expect(within(screen.getByRole("dialog", { name: "Send feedback" })).getByRole("radio", { name: "A carpark we've missed" })).toBeChecked();
+  });
 });

@@ -1,6 +1,6 @@
 # ParkWhere: agent notes
 
-ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It covers HDB carparks, the mall and URA carparks that report counts to LTA, and public carparks and carparks at public places mapped on OpenStreetMap. A single Cloudflare Worker serves both the PWA and a small JSON API. One person maintains it, so keep it small, honest and low-maintenance.
+ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It covers HDB carparks, the mall and URA carparks that report counts to LTA, and public carparks and carparks at public places mapped on OpenStreetMap. A single Cloudflare Worker serves both the PWA and a small JSON API, takes in-app feedback, and runs two Cron triggers for it. One person maintains it, so keep it small, honest and low-maintenance.
 
 ## Commands
 
@@ -15,6 +15,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 | `pnpm media [url]` | Regenerates the README screenshots, walkthrough and diagram images in `docs/media`. Needs a running app. |
 | `pnpm registry` | Refreshes `worker/registry.json` from data.gov.sg. Review the diff, then commit. |
 | `pnpm stats [--days N \| --month YYYY-MM --write]` | Usage report from Analytics Engine. Needs `CLOUDFLARE_ACCOUNT_ID` and a read-only `CLOUDFLARE_ANALYTICS_TOKEN` in `.dev.vars`. |
+| `pnpm feedback [list --all \| find <text> [--since YYYY-MM-DD] \| done <id> \| delete <id> \| osm <id>]` | Reads and triages feedback reports with `wrangler d1 execute --remote` (`--staging` for staging, `--local` for the `pnpm dev` database). Notes are printed with control characters stripped. `osm <id>` prints neutral note text and the `/note/new` link for the owner to post by hand. |
 | `pnpm osm [--refresh]` | Refreshes `worker/osm-carparks.json` (public carparks and carparks at public places) from OpenStreetMap (Geofabrik extract, cached in `.cache/osm/`). Needs `osmium` (`brew install osmium-tool`). Review the diff, then commit. |
 | `wrangler d1 migrations apply parkwhere-production --local` | Run once before the first `pnpm dev` |
 
@@ -24,6 +25,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
   - `availability.ts`: normalises the feed, rates record freshness and builds the feed status
   - `lta.ts`: normalises LTA DataMall (LTA and URA car rows only) and its honest availability, with no time and no total
   - `usage.ts`: anonymous usage counts (lookups, visits, directions, search, errors) and what may be recorded
+  - `feedback.ts`: feedback reasons by source, the report check the Worker applies, retention dates, and what a count report says the card showed
   - `osm.ts`: picks public carparks from OpenStreetMap features (build time) and turns them into carparks with no count (run time)
   - `osm-places.ts`: picks carparks mapped at public places (malls, venues, big-box stores, retail areas, parks) with access unknown (build time)
   - `levels.ts`: dot and count colour levels; the overview only colours current, dated HDB counts
@@ -36,8 +38,10 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
   - `feed.ts`: last-good snapshots in D1 and the refresh policy, one store per source (HDB, LTA)
   - `lta.ts`: paged Effect fetch of LTA DataMall
   - `search.ts`: OneMap search, with HDB registry search as the fallback
-  - `index.ts`: routes
-- `src/` is the React UI. `CarparkMap` is lazy-loaded and uses Leaflet with OneMap tiles.
+  - `feedback.ts`: `POST /api/feedback` (limiter, daily cap, duplicate check) and the Cron handlers (daily purge, weekly digest email)
+  - `request.ts`: the same-origin check and capped body reader shared by `/api/event` and `/api/feedback`
+  - `index.ts`: routes and the `scheduled` handler
+- `src/` is the React UI. `CarparkMap` is lazy-loaded and uses Leaflet with OneMap tiles. `FeedbackSheet` is the report and feedback dialog.
 - `fixtures/` holds trimmed real upstream responses. Prefer real samples over invented data in tests.
 - `scripts/` holds Node 26 TypeScript scripts, which run directly with no build step.
 
@@ -56,6 +60,15 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
     - The one exception is a carpark mapped at a public place (`shared/osm-places.ts`): a named mall, venue, attraction, terminal, big-box store, retail area, park or sports ground with a carpark area or entrance mapped at it (for a venue, store or retail area, also a carpark mapped as a point inside it), and no access tag. Its access is `unknown`. It is always shown as "Carpark mapped at <place>" with "Mapped on OpenStreetMap" as the source, never as public, and never with a count or a price. Big-box stores are shops of a listed kind (furniture, electronics, supermarket and the like, never car dealers) mapped as a building or area of at least 3,000 m², not as a room inside a mall; a store wholly inside a mall is the mall's. A retail area (`landuse=retail`) counts only carparks inside its outline, and a store that shares one names the card. Hospitals, clinics and campuses, blocks of flats, neighbourhoods, private places, station shops, connectors, food centres, markets, petrol stations and generic names are left out, and so is an entrance just outside a place that is closer to another building. So is anything inside a construction site, an entrance on a private or residents' road, and a carpark that only such roads lead into. What the tags can't show goes in the short, dated `EXCLUDED` list. No two cards that can be listed together (within 4 km) share a title, and one mapped carpark makes at most one entry. It's dropped only as a true duplicate: HDB-run, within 80 m of an HDB carpark, already shown as a public OpenStreetMap carpark, within 30 m of an LTA or URA carpark, or with the place's name on an LTA or URA carpark within 300 m.
 11. Usage counts stay anonymous: no cookies, IDs, IP addresses, search text or exact locations, and nothing that links visits. A destination's area (0.02°) is recorded only for gap lookups from search, quick picks or the map, never for Near me or links. Referrers are cut to the site name. Count only requests that carry `c=1` from the app. Respect Global Privacy Control and Do Not Track, skip automated browsers, and keep the README's Privacy section and the footer in step with what `shared/usage.ts` records.
 
+12. Feedback is content people choose to send, separate from the usage counts in rule 11.
+    - **Stored** (D1 table `feedback`, migration 0003): the reason, the carpark id and source, what the card showed (count reports only), the note, the app version (`__APP_VERSION__`), the SGT date with no time of day, and the status. Never a name, contact details, IP address, user agent, device, country, referrer, cookie, ID or location. There is no email field and no reply.
+    - **Retention:** the daily Cron deletes a report 180 days after it's closed (`pnpm feedback done`), and 12 months after it arrived at the latest. D1 Time Travel keeps deleted rows for 30 more days; say so, and promise nothing beyond it.
+    - **Privacy requests** go to privacy@bijan.app (Email Routing to the owner). Use `pnpm feedback find` to match by date, carpark and note text. Act only on one clear match, never ask for identity documents, and reply within 30 days. Keep the correspondence in the mailbox, not in D1.
+    - **Sending works with Global Privacy Control and Do Not Track on**, because it's the person's own choice. A report carries no usage context, and sending one isn't counted.
+    - **Nothing is posted publicly by the Worker:** no OpenStreetMap notes and no GitHub issues. The owner may post a checked, neutral note by hand (`pnpm feedback osm`), never the reporter's text.
+    - **Notes are never logged, emailed or echoed back.** The weekly digest carries counts only. The route answers 204, or 400, 403, 429 or 503 with a calm message.
+    - **Reasons fit the source:** rates only on HDB cards, a count only on HDB, LTA and URA cards, and "It isn't a carpark" only on OpenStreetMap cards. "Something else" and general feedback need a note.
+
 ## External services
 
 - data.gov.sg HDB availability (v1 real-time) needs no key. The optional `DATA_GOV_SG_API_KEY` secret raises rate limits. The refresh claim keeps upstream calls to about one a minute.
@@ -63,6 +76,7 @@ ParkWhere is a Singapore parking finder at https://parkwhere.bijan.app. It cover
 - Attribution under the Singapore Open Data Licence, and the OpenStreetMap credit, are in `src/components/Footer.tsx`.
 - OpenStreetMap data comes from Geofabrik's extract at build time only; the Worker never calls OpenStreetMap. `worker/osm-carparks.json` is under the Open Database Licence (ODbL 1.0), not MIT.
 - Workers Analytics Engine holds the usage counts (binding `EVENTS`: `parkwhere_events`, staging `parkwhere_staging_events`; previews have none, so every write must allow for it being absent). Data is kept for 3 months; `pnpm stats --month YYYY-MM --write` keeps summaries in `docs/stats/`. Logs redact query strings.
+- Email Routing on bijan.app forwards privacy@bijan.app to the owner, and carries the weekly feedback digest: a `send_email` binding (`FEEDBACK_EMAIL`) with a fixed `destination_address`, sent from parkwhere@bijan.app. Previews have no binding and the digest does nothing without one. `FEEDBACK_LIMITER` allows 3 reports per 60 s per visitor (namespaces 4205 production, 4206 staging and previews). Without the limiter or the `feedback` table, `/api/feedback` answers 503.
 - LTA DataMall (`LTA_DATAMALL_ACCOUNT_KEY`) adds mall and URA carparks. Without the key they're left out, and nothing else changes. URA's own API (rates) isn't integrated: it needs a separate URA access key.
 
 ## Environments and pull requests
