@@ -86,7 +86,7 @@ export function FeedbackSheet({ target, onClose }: Props) {
       }
       if (returnTo?.isConnected) returnTo.focus({ preventScroll: true });
     };
-    // The target is fixed for the sheet's lifetime (the parent remounts it for a new one).
+    // The target is fixed for the sheet's lifetime: App keys the sheet by target, so a new one remounts it.
   }, []);
 
   useEffect(() => {
@@ -181,7 +181,8 @@ export function FeedbackSheet({ target, onClose }: Props) {
         </div>
       ) : (
         <form className="sheet-body" noValidate onSubmit={submit}>
-          <fieldset className="radios">
+          {/* Locked while sending, so nothing typed after Send is lost when the sheet turns to Sent. */}
+          <fieldset className="radios" disabled={phase === "sending"}>
             <legend className="label">{isCarpark ? "What's wrong?" : "What's it about?"}</legend>
             <div className="radio-list">
               {reasons.map((option) => (
@@ -207,6 +208,7 @@ export function FeedbackSheet({ target, onClose }: Props) {
               ref={noteBox}
               maxLength={limit}
               rows={4}
+              readOnly={phase === "sending"}
               value={note}
               required={noteRequired}
               onChange={(event) => setNote(event.target.value)}
@@ -215,15 +217,20 @@ export function FeedbackSheet({ target, onClose }: Props) {
             />
             <div className="field-foot">
               <p className="hint" id={`${id}-hint`}>{hint}</p>
-              <span className="counter" aria-label={`${note.length} of ${limit.toLocaleString("en-SG")} characters`}>
+              <span className="counter">
                 {note.length}/{limit.toLocaleString("en-SG")}
               </span>
             </div>
           </div>
-          {/* People never see or fill this in; a report with it filled is dropped by the Worker. */}
+          {/*
+            People never see or fill this in; a report with it filled is dropped by the Worker (sent as
+            `website`). Its name and label are deliberately meaningless, so browser autofill and password
+            managers leave it alone.
+          */}
           <div className="bait" aria-hidden="true">
             <label>
-              Website <input ref={bait} name="website" type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
+              Leave this empty{" "}
+              <input ref={bait} name="pw_extra" type="text" tabIndex={-1} autoComplete="off" data-1p-ignore="" data-lpignore="true" data-bwignore="" defaultValue="" />
             </label>
           </div>
           <div>

@@ -77,7 +77,7 @@ describe("cleanNote and printable", () => {
   });
 
   it("strips terminal escape sequences before printing", () => {
-    expect(printable("ok\u001B[2J\u001B[31mred\u0007\nnext")).toBe("okred\nnext");
+    expect(printable("ok\u001B[2J\u001B[31mred\u0007\nnext\tcolumn")).toBe("okred\nnext\tcolumn");
     expect(printable(null)).toBe("");
   });
 });
@@ -90,6 +90,10 @@ describe("dates and retention", () => {
   it("deletes 180 days after closing, and 12 months after receipt at the latest", () => {
     expect(purgeCutoffs("2026-10-20")).toEqual({ closedOnOrBefore: "2026-04-23", receivedOnOrBefore: "2025-10-20" });
     expect(yearBefore("2028-02-29")).toBe("2027-02-28");
+    // A report from 29 Feb is 12 months old on the next 28 Feb, not on 1 Mar.
+    expect(yearBefore("2025-02-28")).toBe("2024-02-29");
+    expect(yearBefore("2025-02-27")).toBe("2024-02-27");
+    expect(yearBefore("2026-03-31")).toBe("2025-03-31");
   });
 });
 
@@ -109,6 +113,8 @@ describe("shownText", () => {
     expect(shownText(car({ reportedBy: "LTA", total: null, recordedAt: null }))).toBe("41 car lots available, as reported by LTA, no time or total");
     expect(shownText(car({ state: "not-in-feed", reportedBy: null }))).toBe("No live count");
     expect(shownText(car({ state: "unknown", available: null }))).toBe("Count unknown, reported 20 Oct 10:02");
+    // Unknown is never written as 0, even if a known count somehow has no number.
+    expect(shownText(car({ available: null }))).toBe("Count unknown, reported 20 Oct 10:02");
   });
 
   it("passes the Worker's check", () => {

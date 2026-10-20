@@ -90,7 +90,7 @@ const unreadable = { kind: "invalid", message: "ParkWhere couldn't read that rep
 export function cleanNote(value: string): string {
   return value
     .replace(/\r\n?/g, "\n")
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/g, "")
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "")
     .trim();
 }
 
@@ -155,11 +155,18 @@ export function daysBefore(date: string, days: number): string {
   return instant.toISOString().slice(0, 10);
 }
 
-/** The same date a year earlier (29 Feb becomes 28 Feb). */
+const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+/**
+ * The latest receipt date that is 12 months old on `date`. Usually the same date a year earlier; on the
+ * last day of a month it's the last day of that month a year earlier, so a report from 29 Feb 2024 is
+ * 12 months old on 28 Feb 2025 (and one from 28 Feb 2027 on 29 Feb 2028 at the latest).
+ */
 export function yearBefore(date: string): string {
   const [year, month, day] = date.split("-").map(Number);
-  const last = new Date(Date.UTC(year - 1, month, 0)).getUTCDate();
-  return `${year - 1}-${String(month).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+  const last = daysInMonth(year - 1, month);
+  const until = day === daysInMonth(year, month) ? last : Math.min(day, last);
+  return `${year - 1}-${String(month).padStart(2, "0")}-${String(until).padStart(2, "0")}`;
 }
 
 /** Notes are kept until 180 days after a report is closed, and never more than 12 months after it arrived. */
@@ -183,8 +190,9 @@ const sgtClock = (iso: string) =>
  */
 export function shownText(car: CarAvailability): string {
   if (car.state === "not-in-feed") return "No live count";
-  if (car.state === "unknown") return car.recordedAt ? `Count unknown, reported ${sgtClock(car.recordedAt)}` : "Count unknown";
-  const lots = car.available ?? 0;
+  // Unknown is never written as 0 (AGENTS.md rule 1).
+  if (car.state === "unknown" || car.available === null) return car.recordedAt ? `Count unknown, reported ${sgtClock(car.recordedAt)}` : "Count unknown";
+  const lots = car.available;
   if (car.reportedBy === "LTA") return `${lots} car lots available, as reported by LTA, no time or total`;
   const total = car.total === null ? "" : ` out of ${car.total}`;
   return `${lots} car lots available${total}, reported ${car.recordedAt ? sgtClock(car.recordedAt) : "at an unknown time"}`;
@@ -203,5 +211,5 @@ export async function noteHash(note: string | null): Promise<string> {
  */
 export function printable(value: string | null): string {
   if (value === null) return "";
-  return value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/g, "");
+  return value.replace(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "");
 }

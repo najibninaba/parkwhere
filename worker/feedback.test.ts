@@ -98,19 +98,26 @@ describe("POST /api/feedback", () => {
     expect(rows(e)).toEqual([]);
   });
 
-  it("never echoes or logs the note", async () => {
-    const e = env();
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("never echoes or logs the note: stored, duplicate, bait, failed store or a throw in the route", async () => {
+    const spies = (["log", "info", "warn", "error"] as const).map((level) => vi.spyOn(console, level).mockImplementation(() => undefined));
+    const secret = "Call me on 9123 4567";
     try {
-      e.DB.raw.exec("DROP TABLE feedback");
-      const secret = "Call me on 9123 4567";
-      const response = await post(e, { ...report, note: secret });
-      expect(await response.text()).not.toContain("9123");
-      expect(JSON.stringify([...log.mock.calls, ...warn.mock.calls])).not.toContain("9123");
+      const e = env();
+      const replies = [
+        await post(e, { ...report, note: secret }),
+        await post(e, { ...report, note: secret }),
+        await post(e, { ...report, note: secret, website: "x" })
+      ];
+      const broken = env();
+      broken.DB.raw.exec("DROP TABLE feedback");
+      replies.push(await post(broken, { ...report, note: secret }));
+      // A limiter that throws reaches the catch in worker/index.ts.
+      replies.push(await post(env({ FEEDBACK_LIMITER: { limit: async () => { throw new Error(secret); } } as unknown as RateLimit }), { ...report, note: secret }));
+      expect(replies.map((reply) => reply.status)).toEqual([204, 204, 204, 503, 503]);
+      for (const reply of replies) expect(await reply.text()).not.toContain("9123");
+      expect(JSON.stringify(spies.flatMap((spy) => spy.mock.calls))).not.toContain("9123");
     } finally {
-      log.mockRestore();
-      warn.mockRestore();
+      for (const spy of spies) spy.mockRestore();
     }
   });
 
@@ -135,7 +142,9 @@ describe("POST /api/feedback", () => {
     expect(rows(e)).toEqual([]);
   });
 
-  it("stops at the daily cap, inside the insert", async () => {
+  // The cap's condition sits inside the INSERT, which is what keeps concurrent reports from passing it
+  // together in D1. The stand-in here runs one statement at a time, so this checks the limit, not a race.
+  it("stops at the daily cap", async () => {
     const e = env();
     const now = new Date("2026-10-20T04:00:00Z");
     const insert = e.DB.raw.prepare("INSERT INTO feedback (received_on, kind, reason, note_hash) VALUES (?, 'general', 'idea', ?)");
@@ -236,7 +245,8 @@ describe("feedback Cron", () => {
 });
 
 describe("feedback config", () => {
-  const jsonc = (text: string) => JSON.parse(text.replace(/^\s*\/\/.*$/gm, ""));
+  // Drops // comments (whole-line or trailing) but leaves strings alone, so "https://..." survives.
+  const jsonc = (text: string) => JSON.parse(text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (_, string?: string) => string ?? ""));
   const config = jsonc(readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"));
 
   it("schedules the purge and digest, and fixes the digest's one address, in production and staging", () => {

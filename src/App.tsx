@@ -351,7 +351,13 @@ export default function App() {
         </div>
       </main>
       <Footer registryFetchedAt={data?.registry.fetchedAt ?? null} onFeedback={(trigger, reason) => setFeedback({ kind: "general", reason, returnFocus: trigger })} />
-      {feedback && <FeedbackSheet target={feedback} onClose={() => setFeedback(null)} />}
+      {feedback && (
+        <FeedbackSheet
+          key={feedback.kind === "carpark" ? `carpark:${feedback.carpark.id}` : `general:${feedback.reason ?? ""}`}
+          target={feedback}
+          onClose={() => setFeedback(null)}
+        />
+      )}
     </div>
   );
 }

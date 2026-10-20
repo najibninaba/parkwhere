@@ -91,7 +91,11 @@ export async function feedbackRoute(request: Request, url: URL, env: FeedbackEnv
   if (text === null) return problem(400, "That report is too long.");
   const checked = checkFeedback(text);
   // A filled-in hidden field means a bot: it gets the same answer as a person, and nothing is kept.
-  if (checked.kind === "bait") return sent();
+  // Logged as a bare count, so a spike (or autofill catching real people) shows up in the logs.
+  if (checked.kind === "bait") {
+    console.log("ParkWhere feedback: dropped a report with the hidden field filled in");
+    return sent();
+  }
   if (checked.kind === "invalid") return problem(400, checked.message);
   const report = checked.report;
   try {

@@ -118,6 +118,10 @@ describe("FeedbackSheet", () => {
     await user.click(within(dialog).getByRole("button", { name: "Sending…" }));
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(within(dialog).queryByText(/Thanks/)).not.toBeInTheDocument();
+    // While sending, the report can't be changed, so nothing typed now is lost when Sent replaces it.
+    await user.type(within(dialog).getByRole("textbox"), " and more");
+    expect(within(dialog).getByRole("textbox")).toHaveValue("Says 41 but the gantry sign says full");
+    expect(within(dialog).getByRole("radio", { name: "Something else" })).toBeDisabled();
     release(new Response(null, { status: 204 }));
     expect(await within(dialog).findByText("Thanks. Your report was sent to ParkWhere.")).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "Report sent" })).toHaveFocus();

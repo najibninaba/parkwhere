@@ -77,6 +77,8 @@ const carparks = registry.carparks.filter((carpark) => !LOADING_BAYS.has(carpark
 const osmCarparks = withoutDuplicates(osmRegistry(osmFile as OsmFile), carparks);
 const hdbIds = new Set(carparks.map((carpark) => carpark.id));
 const osmIds = new Set(osmCarparks.map((carpark) => carpark.id));
+/** LTA and URA carpark ids from the last snapshot read for a feedback check, keyed on its fetch time. */
+let ltaIds: { fetchedAt: string; ids: Set<string> } | null = null;
 
 /**
  * Whether a feedback report names a carpark ParkWhere lists: HDB and OpenStreetMap ones from the bundled
@@ -85,10 +87,16 @@ const osmIds = new Set(osmCarparks.map((carpark) => carpark.id));
 async function carparkExists(env: Env, source: CarparkSource, id: string): Promise<boolean> {
   if (source === "hdb") return hdbIds.has(id);
   if (source === "osm") return osmIds.has(id);
-  const row = await env.DB.prepare("SELECT payload FROM lta_snapshot WHERE id = 1").first<{ payload: string }>();
-  if (!row) return false;
-  const snapshot = JSON.parse(row.payload) as LtaSnapshot;
-  return ltaRegistry(snapshot).some((carpark) => carpark.id === id && carpark.source === source);
+  const stamp = await env.DB.prepare("SELECT fetched_at FROM lta_snapshot WHERE id = 1").first<{ fetched_at: string }>();
+  if (!stamp) return false;
+  // The snapshot is parsed once per LTA refresh, not once per report.
+  if (ltaIds?.fetchedAt !== stamp.fetched_at) {
+    const row = await env.DB.prepare("SELECT fetched_at, payload FROM lta_snapshot WHERE id = 1").first<{ fetched_at: string; payload: string }>();
+    if (!row) return false;
+    const snapshot = JSON.parse(row.payload) as LtaSnapshot;
+    ltaIds = { fetchedAt: row.fetched_at, ids: new Set(ltaRegistry(snapshot).map((carpark) => `${carpark.source}:${carpark.id}`)) };
+  }
+  return ltaIds.ids.has(`${source}:${id}`);
 }
 
 /** OpenStreetMap carparks minus any that duplicate an LTA or URA carpark, worked out once per LTA snapshot. */
