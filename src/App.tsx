@@ -3,6 +3,7 @@ import type { NearbyCarpark, NearbyResponse, OverviewResponse } from "../shared/
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore } from "../shared/nearby";
 import { parseSgtLocal, toSgtLocal } from "../shared/sgt";
 import { estimateCost, type CostEstimate } from "../shared/tariff";
+import { shownText } from "../shared/feedback";
 import { ApiError, fetchNearby, fetchOverview } from "./api";
 import type { NavApp } from "./navigation";
 import { countDirections, reloaded } from "./usage";
@@ -11,6 +12,7 @@ import { CardSkeleton } from "./components/CardSkeleton";
 import { CarparkCard } from "./components/CarparkCard";
 import { Landing } from "./components/Landing";
 import { LiveLine, MapLegend, overviewIsCurrent } from "./components/MapOverlays";
+import { FeedbackSheet, type FeedbackTarget } from "./components/FeedbackSheet";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { PlanBar, type SortKey } from "./components/PlanBar";
@@ -71,6 +73,7 @@ export default function App() {
   const [reloadKey, setReloadKey] = useState(0);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackTarget | null>(null);
 
   // Every carpark for the map, refreshed while the page is visible. A failure is shown, and old
   // colours expire (see overviewIsCurrent) rather than staying "live" forever.
@@ -317,6 +320,7 @@ export default function App() {
                             selected={carpark.id === selectedId}
                             onSelect={() => setSelectedId(carpark.id)}
                             onDirections={(app) => onDirections(app, carpark)}
+                            onReport={(trigger) => setFeedback({ kind: "carpark", carpark, shown: shownText(carpark.car), returnFocus: trigger })}
                             now={now}
                           />
                         ))}
@@ -346,7 +350,14 @@ export default function App() {
           <MapLegend />
         </div>
       </main>
-      <Footer registryFetchedAt={data?.registry.fetchedAt ?? null} />
+      <Footer registryFetchedAt={data?.registry.fetchedAt ?? null} onFeedback={(trigger, reason) => setFeedback({ kind: "general", reason, returnFocus: trigger })} />
+      {feedback && (
+        <FeedbackSheet
+          key={feedback.kind === "carpark" ? `carpark:${feedback.carpark.id}` : `general:${feedback.reason ?? ""}`}
+          target={feedback}
+          onClose={() => setFeedback(null)}
+        />
+      )}
     </div>
   );
 }

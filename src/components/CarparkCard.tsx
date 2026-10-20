@@ -13,6 +13,8 @@ interface Props {
   onSelect: () => void;
   /** Called when a map app is opened, for the anonymous hand-off count. */
   onDirections?: (app: NavApp) => void;
+  /** Opens the feedback sheet for this carpark; the button is passed so focus can return to it. */
+  onReport?: (trigger: HTMLButtonElement) => void;
   now: number;
 }
 
@@ -106,7 +108,7 @@ function directionsHint(carpark: NearbyCarpark): string {
     : "Goes to the carpark's mapped location, which may not be its entrance.";
 }
 
-export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, now }: Props) {
+export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected, onSelect, onDirections, onReport, now }: Props) {
   const [open, setOpen] = useState(false);
   const source = carpark.source ?? "hdb";
   // A carpark mapped at a public place has no access tag: it's never shown as public, only as mapped.
@@ -182,6 +184,19 @@ export function CarparkCard({ carpark, rank, estimate, durationMinutes, selected
           </div>
         </details>
       </div>
+      {onReport && (
+        <div className="card-report">
+          <button
+            type="button"
+            className="link"
+            aria-haspopup="dialog"
+            aria-label={`Report a problem with ${source === "hdb" ? title(carpark.address) : carpark.address}`}
+            onClick={(event) => onReport(event.currentTarget)}
+          >
+            Report a problem
+          </button>
+        </div>
+      )}
     </li>
   );
 }

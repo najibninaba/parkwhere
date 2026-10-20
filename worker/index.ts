@@ -1,5 +1,5 @@
 import { carAvailability, feedStatus } from "../shared/availability";
-import type { CarAvailability, NearbyResponse, OsmFile, OverviewResponse, RegistryCarpark, RegistryFile } from "../shared/domain";
+import type { CarAvailability, CarparkSource, LtaSnapshot, NearbyResponse, OsmFile, OverviewResponse, RegistryCarpark, RegistryFile } from "../shared/domain";
 import { levelCode, overviewLevel } from "../shared/levels";
 import { DEFAULT_RADIUS_M, RADIUS_OPTIONS_M, isInSingapore, nearbyCarparks } from "../shared/nearby";
 import { LOADING_BAYS } from "../shared/tariff";
@@ -9,6 +9,8 @@ import { OSM_AVAILABILITY, osmRegistry, withoutDuplicates } from "../shared/osm"
 import osmFile from "./osm-carparks.json";
 import registryFile from "./registry.json";
 import { SearchUnavailable, onemapConfigured, search, type SearchEnv } from "./search";
+import { feedbackCron, feedbackRoute, feedbackUnavailable, type FeedbackEnv } from "./feedback";
+import { readCapped, sameOrigin } from "./request";
 import {
   directionsPoint,
   errorPoint,
@@ -23,7 +25,7 @@ import {
   type DataPoint
 } from "../shared/usage";
 
-export interface Env extends FeedEnv, SearchEnv {
+export interface Env extends FeedEnv, SearchEnv, FeedbackEnv {
   ASSETS: Fetcher;
   SEARCH_LIMITER?: RateLimit;
   /** Anonymous usage counts (shared/usage.ts). Absent in PR previews and tests, where nothing is counted. */
@@ -73,6 +75,29 @@ const registry = registryFile as RegistryFile;
 const carparks = registry.carparks.filter((carpark) => !LOADING_BAYS.has(carpark.id));
 /** Public carparks mapped on OpenStreetMap (no counts, no prices). scripts/sync-osm.ts already left out HDB duplicates. */
 const osmCarparks = withoutDuplicates(osmRegistry(osmFile as OsmFile), carparks);
+const hdbIds = new Set(carparks.map((carpark) => carpark.id));
+const osmIds = new Set(osmCarparks.map((carpark) => carpark.id));
+/** LTA and URA carpark ids from the last snapshot read for a feedback check, keyed on its fetch time. */
+let ltaIds: { fetchedAt: string; ids: Set<string> } | null = null;
+
+/**
+ * Whether a feedback report names a carpark ParkWhere lists: HDB and OpenStreetMap ones from the bundled
+ * files, LTA and URA ones from LTA's last good snapshot.
+ */
+async function carparkExists(env: Env, source: CarparkSource, id: string): Promise<boolean> {
+  if (source === "hdb") return hdbIds.has(id);
+  if (source === "osm") return osmIds.has(id);
+  const stamp = await env.DB.prepare("SELECT fetched_at FROM lta_snapshot WHERE id = 1").first<{ fetched_at: string }>();
+  if (!stamp) return false;
+  // The snapshot is parsed once per LTA refresh, not once per report.
+  if (ltaIds?.fetchedAt !== stamp.fetched_at) {
+    const row = await env.DB.prepare("SELECT fetched_at, payload FROM lta_snapshot WHERE id = 1").first<{ fetched_at: string; payload: string }>();
+    if (!row) return false;
+    const snapshot = JSON.parse(row.payload) as LtaSnapshot;
+    ltaIds = { fetchedAt: row.fetched_at, ids: new Set(ltaRegistry(snapshot).map((carpark) => `${carpark.source}:${carpark.id}`)) };
+  }
+  return ltaIds.ids.has(`${source}:${id}`);
+}
 
 /** OpenStreetMap carparks minus any that duplicate an LTA or URA carpark, worked out once per LTA snapshot. */
 let osmForLta: { fetchedAt: string | null; carparks: RegistryCarpark[] } | null = null;
@@ -218,41 +243,14 @@ async function searchRoute(request: Request, url: URL, env: Env): Promise<Respon
  */
 async function event(request: Request, url: URL, env: Env): Promise<Response> {
   const done = new Response(null, { status: 204 });
-  // Browsers send these and pages can't forge them, so they keep other sites from counting through a
-  // visitor's browser. A script can still send anything; the event limit caps what it can add.
-  const site = request.headers.get("sec-fetch-site");
-  const origin = request.headers.get("origin");
-  if ((site !== null && site !== "same-origin") || (origin !== null && origin !== url.origin) || (site === null && origin === null)) return done;
+  // Keeps other sites from counting through a visitor's browser. A script can still send anything; the
+  // event limit caps what it can add.
+  if (!sameOrigin(request, url)) return done;
   if (!env.EVENTS || usageBlocked(request.headers) || !(await underEventLimit(request, env))) return done;
   const text = await readCapped(request, 1024);
   const beacon = text === null ? null : parseBeacon(text);
   if (beacon) count(env, directionsPoint(beacon, country(request)));
   return done;
-}
-
-/** The body as text, or null once it passes `limit` bytes, read as it arrives so a large body is never buffered. */
-async function readCapped(request: Request, limit: number): Promise<string | null> {
-  if (!request.body) return "";
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > limit) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 async function health(env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -282,6 +280,14 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/event" && request.method === "POST") return await event(request, url, env).catch(() => new Response(null, { status: 204 }));
+    if (url.pathname === "/api/feedback") {
+      if (request.method !== "POST") return problem(405, "Method not allowed");
+      // Never log the error itself here: it could carry the report.
+      return await feedbackRoute(request, url, env, (source, id) => carparkExists(env, source, id)).catch(() => {
+        console.error("ParkWhere feedback failed");
+        return feedbackUnavailable();
+      });
+    }
     if (request.method !== "GET" && request.method !== "HEAD") return problem(405, "Method not allowed");
     try {
       if (url.pathname === "/api/nearby") return await nearby(request, url, env, ctx);
@@ -295,5 +301,10 @@ export default {
       return problem(500, "Something went wrong on our side.");
     }
     return env.ASSETS.fetch(request);
+  },
+
+  /** The daily feedback purge and the weekly digest (worker/feedback.ts). */
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    await feedbackCron(controller.cron, env);
   }
 } satisfies ExportedHandler<Env>;

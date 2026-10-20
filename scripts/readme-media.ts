@@ -43,10 +43,12 @@ try {
   await p.goto(`${base}${bugis}`, { waitUntil: "networkidle" });
   await p.locator(".card").first().waitFor();
   await settle();
-  await p.locator(".card").first().scrollIntoViewIfNeeded();
-  await p.locator(".card").first().getByText("Rates", { exact: true }).click();
+  // The first HDB card (its sub-line starts with the carpark number), even when a mall carpark is nearer.
+  const hdbCard = p.locator(".card", { has: p.locator(".card-sub", { hasText: /^[A-Z0-9]{2,6} · / }) }).first();
+  await hdbCard.scrollIntoViewIfNeeded();
+  await hdbCard.getByText("Rates", { exact: true }).click();
   await settle(400);
-  await p.locator(".card").first().screenshot({ path: join(out, "card-phone.png") });
+  await hdbCard.screenshot({ path: join(out, "card-phone.png") });
   await p.evaluate(() => window.scrollTo(0, 0));
   await settle(400);
   await p.screenshot({ path: join(out, "results-phone.png") });

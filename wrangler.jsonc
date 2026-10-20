@@ -19,11 +19,19 @@
   ],
   // Deploying with this creates the parkwhere.bijan.app DNS record and certificate on the bijan.app zone.
   "routes": [{ "pattern": "parkwhere.bijan.app", "custom_domain": true }],
-  // Per-visitor limit on /api/search, which proxies OneMap once credentials are set.
+  // Per-visitor limits: /api/search (which proxies OneMap once credentials are set), usage events and
+  // feedback reports. Keyed on the IP address, which is never stored.
   "ratelimits": [
     { "name": "SEARCH_LIMITER", "namespace_id": "4201", "simple": { "limit": 30, "period": 60 } },
-    { "name": "EVENT_LIMITER", "namespace_id": "4203", "simple": { "limit": 60, "period": 60 } }
+    { "name": "EVENT_LIMITER", "namespace_id": "4203", "simple": { "limit": 60, "period": 60 } },
+    { "name": "FEEDBACK_LIMITER", "namespace_id": "4205", "simple": { "limit": 3, "period": 60 } }
   ],
+  // Feedback (worker/feedback.ts): delete old reports daily at 03:30 SGT, and email the owner a count of
+  // new ones on Mondays at 08:00 SGT. Crons are in UTC and must match PURGE_CRON and DIGEST_CRON.
+  "triggers": { "crons": ["30 19 * * *", "0 0 * * MON"] },
+  // The weekly digest, sent through Email Routing on bijan.app to one fixed, verified address. It carries
+  // counts only, never note text.
+  "send_email": [{ "name": "FEEDBACK_EMAIL", "destination_address": "najibninaba@gmail.com" }],
   // Anonymous usage counts (shared/usage.ts). Staging writes to its own dataset; PR previews have none.
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "parkwhere_events" }],
   "workers_dev": false,
@@ -48,8 +56,13 @@
       "routes": [{ "pattern": "parkwhere-staging.bijan.app", "custom_domain": true }],
       "ratelimits": [
         { "name": "SEARCH_LIMITER", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
-        { "name": "EVENT_LIMITER", "namespace_id": "4204", "simple": { "limit": 60, "period": 60 } }
+        { "name": "EVENT_LIMITER", "namespace_id": "4204", "simple": { "limit": 60, "period": 60 } },
+        { "name": "FEEDBACK_LIMITER", "namespace_id": "4206", "simple": { "limit": 3, "period": 60 } }
       ],
+      "triggers": { "crons": ["30 19 * * *", "0 0 * * MON"] },
+      "send_email": [{ "name": "FEEDBACK_EMAIL", "destination_address": "najibninaba@gmail.com" }],
+      // Marks the staging digest, so its test reports aren't mistaken for real ones.
+      "vars": { "PARKWHERE_ENV": "staging" },
       "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "parkwhere_staging_events" }],
       "workers_dev": true,
       "preview_urls": true,

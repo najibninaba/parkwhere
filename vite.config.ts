@@ -1,9 +1,22 @@
+import { execFileSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vite";
 
+/** "2026-10-20.47bacd5": the build date (UTC) and commit, stored with feedback so a report can be tied to a build. */
+function appVersion(): string {
+  const date = new Date().toISOString().slice(0, 10);
+  try {
+    const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return /^[0-9a-f]{4,40}$/.test(sha) ? `${date}.${sha}` : date;
+  } catch {
+    return date;
+  }
+}
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     react(),
     cloudflare(),

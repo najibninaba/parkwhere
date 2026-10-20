@@ -39,6 +39,7 @@
 - **Says how recent each count is.** HDB counts show when the carpark last reported. LTA counts have no time, so they're shown as reported. Only counts from the last 15 minutes are coloured. Older counts are grey, with their age, and a count is never shown as 0 when it's unknown.
 - **Estimates parking costs at HDB carparks.** Prices are worked out from HDB's published rates, including per-minute charging, the 15-minute grace period, Central Area hours, night and day caps and free parking on Sundays and public holidays. When the rules don't cover a stay, the card says "No estimate" and why, and shows the published rate. Mall, URA and OpenStreetMap carparks say "No estimate".
 - **Hands off to your map app.** Directions open in Google Maps, Apple Maps or Waze at the carpark's mapped location, or at its entrance when OpenStreetMap maps one.
+- **Takes reports in the app.** "Report a problem" on each card sends a short report about that carpark, and "Send feedback" in the footer takes general feedback and carparks it has missed. ParkWhere can't reply, and reports are never published.
 
 <p align="center">
   <img src="docs/media/card-phone.png" width="300" alt="An HDB carpark card with its car lot count, when it was reported, the estimated price and the rates">
@@ -60,6 +61,9 @@ One Cloudflare Worker serves the web app and a small JSON API:
 | `GET /api/overview` | Every carpark as a coloured dot, for the landing map |
 | `GET /api/search?q=` | Places from OneMap, or HDB carpark addresses when OneMap isn't configured |
 | `GET /health` | 200 when the HDB feed is live, otherwise 503. It also reports LTA. |
+| `POST /api/feedback` | Stores one feedback report from the app (same-origin only). 204 when stored, 400 or 429 with a message, 503 when feedback is off |
+
+Two Cron triggers run on the same Worker: a daily one deletes old feedback, and a weekly one emails the maintainer a count of new reports.
 
 ### Data sources
 
@@ -107,6 +111,7 @@ The app runs without keys. To try OneMap search and mall carparks, put your own 
 | `pnpm registry` | Refreshes the bundled HDB carpark registry |
 | `pnpm osm [--refresh]` | Refreshes the bundled OpenStreetMap carparks (needs osmium-tool) |
 | `pnpm stats [--days 7 \| --month YYYY-MM --write]` | Reports usage counts; `--write` saves a monthly summary to `docs/stats/` |
+| `pnpm feedback [list --all \| find <text> \| done <id> \| delete <id> \| osm <id>]` | Reads and triages feedback reports in D1 (`--staging` for staging, `--local` for `pnpm dev`) |
 
 ## Environments and deploys
 
@@ -149,6 +154,7 @@ ParkWhere is free, so it counts a few things to judge whether it's useful: page 
 - **Kept on your device:** nothing, unless you turn counting off for your browser by visiting `?nostats` (and back on with `?stats`).
 - **Not counted:** browsers that send Global Privacy Control or Do Not Track, automated browsers (including ParkWhere's own checks), bots and pull request previews. Staging writes to a separate dataset.
 - **Logs:** the Worker's request logs leave out query strings, which hold coordinates and search text. Cloudflare, which hosts ParkWhere, handles visitors' IP addresses to serve the site; ParkWhere doesn't store them.
+- **Feedback:** separate from the usage counts. A report you choose to send keeps the carpark, the reason you chose, the date (no time), your note, the app version and, for a count report, what the card showed. It keeps no name, contact details, IP address, device or location, and it works with Global Privacy Control or Do Not Track on. Reports are stored in D1, read only by the maintainer, and never published. They're deleted 180 days after they're dealt with, and 12 months after they arrive at the latest; D1's backups keep them for up to 30 more days. The weekly email to the maintainer carries counts only, never notes. To ask about or remove a report you sent, email privacy@bijan.app. Say roughly when you sent it and what the note said, so it can be found. You'll get a reply within 30 days.
 
 ## Not covered yet
 
