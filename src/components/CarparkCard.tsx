@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { NearbyCarpark } from "../../shared/domain";
 import { CENTRAL_AREA_CARPARKS, TARIFF_SOURCE, TARIFF_URL, publishedRate, type CostEstimate } from "../../shared/tariff";
-import { age, clock, distance, isCurrent, money, spaceLevel, stay } from "../format";
+import { age, clock, distance, isCurrent, money, spaceLevel, stay, title } from "../format";
 import { NAV_APPS, navigationUrl, type NavApp } from "../navigation";
 
 interface Props {
@@ -15,8 +15,6 @@ interface Props {
   onDirections?: (app: NavApp) => void;
   now: number;
 }
-
-const title = (value: string) => value.toLowerCase().replace(/\b([a-z])/g, (letter) => letter.toUpperCase()).replace(/\bBlk\b/g, "Blk");
 
 const lots = new Intl.NumberFormat("en-SG");
 
